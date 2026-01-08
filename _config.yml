@@ -1,0 +1,10 @@
+title: "Baptiste M47"
+description: "Portfolio — CV & projets"
+theme: jekyll-theme-cayman
+
+# Optionnel : appliquer un layout par défaut à toutes les pages
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
