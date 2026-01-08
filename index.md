@@ -2,7 +2,7 @@
 title: "Portfolio"
 ---
 
-# Baptiste M47
+# Baptiste Messant
 *Économie • Finance • Risques*
 
 - [CV (PDF)](/assets/CV.pdf)
