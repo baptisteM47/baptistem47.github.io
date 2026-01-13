@@ -1,21 +1,16 @@
 ---
-title: "Portfolio"
+layout: page
+title: Accueil
 ---
 
-# Baptiste Messant
-*Économie • Finance • Risques*
+# Ton Nom
+Étudiante / Économiste – finance & risques.
 
-- [CV (PDF)](/assets/CV.pdf)
-- [GitHub](https://github.com/baptisteM47)
-- [LinkedIn](https://www.linkedin.com/)
+- 📄 [CV](/cv)
+- 🧪 [Projets](/projects)
+- 🔗 GitHub : https://github.com/TONPSEUDO
+- 🔗 LinkedIn : LIEN_LINKEDIN
 
-## Projets
-### Projet 1 — Titre
-- **Objectif :** …
-- **Données :** …
-- **Méthodes :** …
-- **Résultats :** …
-➡️ Repo : https://github.com/baptisteM47/nom-du-projet-1
+## À propos
+Écris 3–5 lignes : domaines, méthodes, ce que tu recherches, etc.
 
-### Projet 2 — Titre
-…
