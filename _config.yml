@@ -1,10 +1,4 @@
 title: "Baptiste Messant"
-description: "Portfolio — CV & projets"
-theme: jekyll-theme-cayman
+description: "Portfolio – CV & projets"
+theme: minima
 
-# Optionnel : appliquer un layout par défaut à toutes les pages
-defaults:
-  - scope:
-      path: ""
-    values:
-      layout: default
