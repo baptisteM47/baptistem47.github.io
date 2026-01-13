@@ -1,5 +1,6 @@
 ---
-layout: page
+layout: single
+permalink: /cv/
 title: CV
 ---
 
