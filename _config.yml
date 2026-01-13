@@ -1,4 +1,10 @@
-title: "Baptiste Messant"
+title: "Baptiste MEssant"
 description: "Portfolio – CV & projets"
-theme: minima
+
+remote_theme: "mmistakes/minimal-mistakes"
+minimal_mistakes_skin: "aqua" # ou "mint", "sunrise", "plum", "neon", "dark", etc.
+
+plugins:
+  - jekyll-include-cache
+
 
