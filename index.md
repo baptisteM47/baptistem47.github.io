@@ -4,14 +4,21 @@ permalink: /
 title: Accueil
 ---
 
-# Ton Nom
-Étudiante / Économiste – finance & risques.
+# Baptiste Messant 
 
-- 📄 [CV](/cv)
-- 🧪 [Projets](/projects)
-- 🔗 GitHub : https://github.com/TONPSEUDO
-- 🔗 LinkedIn : LIEN_LINKEDIN
+Final-year Master's student specialising in **Global Risks** at the Toulouse School of Economics.
+I am currently completing an internship as a **Risk Manager in the Energy Markets** department at IDEX, which will end on **13/10/2026**. 
 
-## À propos
-Écris 3–5 lignes : domaines, méthodes, ce que tu recherches, etc.
+## Portfolio 
+
+Welcome to my personal portfolio. Here you will find a clear overview of my career, skills, experiences and projects. Please use the links below to navigate through my portfolio. 
+
+- **CV link :**  [CV](/cv)
+- **Projects link :**  [Projets](/projects)
+- **GitHub link :**  https://github.com/TONPSEUDO
+- **Personnal LinkedIn link :**  https://www.linkedin.com/in/baptiste-messant/
+
+## What I am looking for 
+
+mettre les differentes volontée profesionelles avec les secteurs pays etc 
 
