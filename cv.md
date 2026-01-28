@@ -1,7 +1,7 @@
 ---
 layout: single
 permalink: /cv/
-title:BAPTISTE MESSANT CV
+title: BAPTISTE MESSANT CV
 ---
 
 ## CV
