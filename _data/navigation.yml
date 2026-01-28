@@ -1,6 +1,14 @@
-- title: Accueil
+- title: Language
   url: /
-- title: CV
-  url: /cv
+- title: CV fr
+  url: /fr/cv/
 - title: Projets
-  url: /projects
+  url: /fr/projects/
+- title: Acceuil
+  url: /fr/
+- title: CV en
+  url: /en/cv/
+- title: Projets en
+  url: /en/projects/
+- title: Home
+  url: /en/
