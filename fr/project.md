@@ -1,6 +1,6 @@
 ---
 layout: single
-permalink: /projects/
+permalink: /fr/projects/
 title: Projets
 ---
 
