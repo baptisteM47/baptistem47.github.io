@@ -1,6 +1,6 @@
 ---
 layout: single
-permalink: /cv/
+permalink: /fr/cv/
 title: BAPTISTE MESSANT CV
 ---
 
