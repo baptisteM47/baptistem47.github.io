@@ -1,7 +1,7 @@
 ---
 layout: single
 permalink: /
-title: Accueil
+title: Home
 ---
 
 # Baptiste Messant 
