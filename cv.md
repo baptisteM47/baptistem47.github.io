@@ -1,10 +1,13 @@
 ---
 layout: single
 permalink: /cv/
-title: CV
+title:BAPTISTE MESSANT CV
 ---
 
 ## CV
+
+Should you require the PDF version of my CV, you can download it here. Please note that it is less extensive than this portfolio.
+
 - Download : [CV](/assets/cv.pdf)
 
 ## Profesional Experiences
@@ -63,5 +66,15 @@ title: CV
 - 2021 - 2024 : ECONOMICS DEGREE Toulouse School of Economics SKILLS
   - **Skills and classes :** Mathematics, Econometrics, Microeconomics, Macroeconomics, Probability, Statistics
 
-## Research project
+## Research projects
+
+- Empirical M2
+- Scoring project
+- Python Project
+- Macro project
+- econometrics project (maybe)
+- CBA project
+- ERM project (alary part, maybe)
+- Empirical M1
+- database project
 - 
