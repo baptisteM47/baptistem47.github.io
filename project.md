@@ -8,14 +8,14 @@ title: Projets
 
 Here i give a clear overview of all the differents projects i have done during my studies and personal time
 
-## Projet 1 — Empirical M2
+## <a id="project-empirical-m2"></a> Projet 1 — Empirical M2
 
 - Objective : ...
 - Methods : ...
-- Data used : put the link to the database used + comment on how we build it 
+- Data used : ...
 - Results : ...
 - Link to the pdf :
-- Link to the code : 
+- Link to the code :
 - Status : In Progress
 
 ## Projet 2 — Scoring
