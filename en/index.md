@@ -1,6 +1,6 @@
 ---
 layout: single
-permalink: /en
+permalink: /en/
 title: Home
 ---
 
