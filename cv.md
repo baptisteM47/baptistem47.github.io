@@ -70,7 +70,7 @@ Should you require the PDF version of my CV, you can download it here. Please no
 
 ### **Projet 1 — Empirical M2**  
 - Description of the project   
-- [View project](projects.md#project-empirical-m2)
+- [View project](project.md#project-empirical-m2)
 
 
 - Scoring project
