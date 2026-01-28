@@ -1,7 +1,7 @@
 ---
 layout: single
 permalink: /
-title: Accueil
+title: Language
 ---
 
 # Welcome / Bienvenue
@@ -9,6 +9,6 @@ title: Accueil
 Please choose your language:  
 Veuillez choisir votre langue :
 
-- 🇫🇷 [Français](fr/index.md)
-- 🇬🇧 [English](en/index.md)
+- 🇫🇷 [Français](fr/)
+- 🇬🇧 [English](en/)
 
