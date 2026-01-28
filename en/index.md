@@ -13,8 +13,8 @@ I am currently completing an internship as a **Risk Manager in the Energy Market
 
 Welcome to my personal portfolio. Here you will find a clear overview of my career, skills, experiences and projects. Please use the links below to navigate through my portfolio. 
 
-- **CV link :**  [CV](/en/cv/)
-- **Projects link :**  [Projets](/en/projects/)
+- **CV link :**  [CV](cv/)
+- **Projects link :**  [Projets](projects/)
 - **GitHub link :**  [Texte](liens vers mon github) https://github.com/TONPSEUDO
 - **LinkedIn:** [linkedin.com/in/baptiste-messant](https://www.linkedin.com/in/baptiste-messant/)
 
