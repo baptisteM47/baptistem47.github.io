@@ -6,7 +6,7 @@ title: Accueil
 
 # Baptiste Messant 
 
-TRADUIRE EN FRANÇAIS 
+TRADUIRE EN FRANÇAIS
 
 Final-year Master's student specialising in **Global Risks** at the Toulouse School of Economics.
 I am currently completing an internship as a **Risk Manager in the Energy Markets** department at IDEX, which will end on **13/10/2026**. 
