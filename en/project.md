@@ -4,6 +4,10 @@ permalink: /en/projects/
 title: Projets
 ---
 
+## Link to others pages
+
+[**Home**](../) · [**CV**](../cv/)
+
 # Explanation
 
 Here i give a clear overview of all the differents projects i have done during my studies and personal time
@@ -118,3 +122,8 @@ Here i give a clear overview of all the differents projects i have done during m
 - Link to the code : 
 - Status : ...
 
+
+
+## Link to others pages
+
+[**Home**](../) · [**CV**](../cv/)
