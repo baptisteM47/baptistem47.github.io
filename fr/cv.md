@@ -4,6 +4,10 @@ permalink: /fr/cv/
 title: BAPTISTE MESSANT CV
 ---
 
+## Liens vers les autres pages
+
+[**Acceuil**](../) · [**Projets**](../project/)
+
 ## CV
 
 TRADUIRE EN FRANÇAIS
@@ -84,3 +88,9 @@ Should you require the PDF version of my CV, you can download it here. Please no
 - Empirical M1
 - database project
 - 
+
+
+
+## Liens vers les autres pages
+
+[**Acceuil**](../) · [**Projets**](../project/)
