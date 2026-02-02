@@ -93,4 +93,4 @@ Should you require the PDF version of my CV, you can download it here. Please no
 
 ## Liens vers les autres pages
 
-[**Acceuil**](../) · [**Projets**](../project/)
+[**Acceuil**](../) · [**Projets**](../projects/)
