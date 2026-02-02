@@ -6,7 +6,7 @@ title: BAPTISTE MESSANT CV
 
 ## Liens vers les autres pages
 
-[**Acceuil**](../) · [**Projets**](../project/)
+[**Acceuil**](../) · [**Projets**](../projects/)
 
 ## CV
 
