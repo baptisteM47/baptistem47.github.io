@@ -4,6 +4,10 @@ permalink: /en/cv/
 title: BAPTISTE MESSANT CV
 ---
 
+## Link to others pages
+
+[**Home**](../) · [**Projets**](../projects/)
+
 ## CV
 
 Should you require the PDF version of my CV, you can download it here. Please note that it is less extensive than this portfolio.
@@ -83,3 +87,8 @@ Should you require the PDF version of my CV, you can download it here. Please no
 - database project
 - 
 
+
+
+## Link to others pages
+
+[**Home**](../) · [**Projets**](../projects/)
