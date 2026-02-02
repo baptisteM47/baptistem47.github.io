@@ -4,6 +4,10 @@ permalink: /fr/projects/
 title: Projets
 ---
 
+## Liens vers les autres pages
+
+[**Acceuil**](../) · [**CV**](../cv/)
+
 # Explanation
 
 TRADUIRE EN FRANÇAIS
@@ -120,3 +124,9 @@ Here i give a clear overview of all the differents projects i have done during m
 - Link to the code : 
 - Status : ...
 
+
+
+
+## Liens vers les autres pages
+
+[**Acceuil**](../) · [**CV**](../cv/)
