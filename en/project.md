@@ -26,47 +26,31 @@ Here i give a clear overview of all the differents projects i have done during m
 
 - Objective : ...
 - Methods : ...
-- [Results / Report :] (https://baptistem47.github.io/Scoring_project/)
+- [Results / Report :](https://baptistem47.github.io/Scoring_project/)
 - Status : Completed
 
-## Project 3 - Python 
+## <a id="project-python"></a> Project 3 - Python 
 
 - Objective : ...
 - Methods : ...
-- Data used : put the link to the database used + comment on how we build it 
-- Results : ...
-- Link to the pdf :
-- Link to the code : 
+- [Results / Report :](https://baptistem47.github.io/Python_project/)
+- [Code : ](https://github.com/baptisteM47/Python_project/blob/main/python_project.qmd)
+- [Data :](https://github.com/baptisteM47/Python_project/blob/main/full_data%20(1).csv)
 - Status : Completed
 
-## Project 3 - Macroeconomics 
+## <a id="project-macro"></a> Project 4 - Macroeconomics 
 
 - Objective : ...
 - Methods : ...
-- Data used : put the link to the database used + comment on how we build it 
-- Results : ...
-- Link to the pdf :
-- Link to the code : 
+- [Results / Report :](https://github.com/baptisteM47/Macro_project/blob/main/Macroeconomics.pdf)
+- [Code :](https://github.com/baptisteM47/Macro_project/blob/main/macrorisksVBR.qmd)
 - Status : Completed
 
-## Project 4 - CBA 
+## <a id="project-CBA"></a> Project 5 - CBA 
 
 - Objective : ...
 - Methods : ...
-- Data used : put the link to the database used + comment on how we build it 
-- Results : ...
-- Link to the pdf :
-- Link to the code : 
-- Status : Completed
-
-## Project 5 - ERM 
-
-- Objective : ...
-- Methods : ...
-- Data used : put the link to the database used + comment on how we build it 
-- Results : ...
-- Link to the pdf :
-- Link to the code : 
+- [Results / Report :](https://github.com/baptisteM47/CBA_project/blob/main/NH1%20paper.pdf)
 - Status : Completed
 
 ## Project 6 - Econometrics 
@@ -79,48 +63,8 @@ Here i give a clear overview of all the differents projects i have done during m
 - Link to the code : 
 - Status : Completed
 
-## Project 7 - Titre 
-
-- Objective : ...
-- Methods : ...
-- Data used : put the link to the database used + comment on how we build it 
-- Results : ...
-- Link to the pdf :
-- Link to the code : 
-- Status : ...
-
-## Project 8 - Titre 
-
-- Objective : ...
-- Methods : ...
-- Data used : put the link to the database used + comment on how we build it 
-- Results : ...
-- Link to the pdf :
-- Link to the code : 
-- Status : ...
-
-## Project 9 - Titre 
-
-- Objective : ...
-- Methods : ...
-- Data used : put the link to the database used + comment on how we build it 
-- Results : ...
-- Link to the pdf :
-- Link to the code : 
-- Status : ...
-
-## Project 10 - Titre 
-
-- Objective : ...
-- Methods : ...
-- Data used : put the link to the database used + comment on how we build it 
-- Results : ...
-- Link to the pdf :
-- Link to the code : 
-- Status : ...
-
-
 
 ## Link to others pages
 
 [**Home**](../) · [**CV**](../cv/)
+
