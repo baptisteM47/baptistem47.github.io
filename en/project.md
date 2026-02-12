@@ -22,14 +22,13 @@ Here i give a clear overview of all the differents projects i have done during m
 - Link to the code :
 - Status : In Progress
 
-## Projet 2 — Scoring
+## <a id="project-scoring"></a> Projet 2 — Scoring
 
 - Objective : ...
 - Methods : ...
 - Data used : put the link to the database used + comment on how we build it 
-- Results : ...
-- Link to the pdf :
-- Link to the code : 
+- Results : 
+- Html Link : [https://baptistem47.github.io/Scoring_project/]
 - Status : Completed
 
 ## Project 3 - Python 
