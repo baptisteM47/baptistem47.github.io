@@ -16,11 +16,9 @@ Here i give a clear overview of all the differents projects i have done during m
 
 - Objective : ...
 - Methods : ...
-- Data used : ...
-- Results : ...
-- Link to the pdf :
-- Link to the code :
-- Status : In Progress
+- [Results / Report :]()
+- [Code :]()
+- Status : Completed
 
 ## <a id="project-scoring"></a> Projet 2 — Scoring
 
@@ -53,14 +51,20 @@ Here i give a clear overview of all the differents projects i have done during m
 - [Results / Report :](https://github.com/baptisteM47/CBA_project/blob/main/NH1%20paper.pdf)
 - Status : Completed
 
-## Project 6 - Econometrics 
+## <a id="project-econometrics"></a> Project 6 - Econometrics 
 
 - Objective : ...
 - Methods : ...
-- Data used : put the link to the database used + comment on how we build it 
-- Results : ...
-- Link to the pdf :
-- Link to the code : 
+- [Results / Report :]()
+- [Code :]()
+- Status : Completed
+
+## <a id="project-empirical-m1"></a> Project 7 - Empirical M1 
+
+- Objective : ...
+- Methods : ...
+- [Results / Report :]()
+- [Code :]()
 - Status : Completed
 
 
