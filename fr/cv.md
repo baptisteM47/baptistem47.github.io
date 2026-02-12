@@ -10,8 +10,6 @@ title: BAPTISTE MESSANT CV
 
 ## CV
 
-TRADUIRE EN FRANÇAIS
-
 Should you require the PDF version of my CV, you can download it here. Please note that it is less extensive than this portfolio.
 
 - Download : [CV](/assets/cv.pdf)
@@ -78,16 +76,30 @@ Should you require the PDF version of my CV, you can download it here. Please no
 - Description of the project   
 - [View project](project.md#project-empirical-m2)
 
+### **Projet 2 — Scoring Project**  
+- Description of the project   
+- [View project](project.md#project-scoring)
 
-- Scoring project
-- Python Project
-- Macro project
-- econometrics project (maybe)
-- CBA project
-- ERM project (alary part, maybe)
-- Empirical M1
-- database project
-- 
+### **Projet 3 — Python Project**  
+- Description of the project   
+- [View project](project.md#project-python)
+
+### **Projet 4 — Macroeconomics Project**  
+- Description of the project   
+- [View project](project.md#project-macro)
+
+### **Projet 5 — Cost Benefit Analysis Project**  
+- Description of the project   
+- [View project](project.md#project-CBA)
+
+### **Projet 6 — Econometrics**  
+- Description of the project   
+- [View project](project.md#project-econometrics)
+
+### **Projet 7 — Empirical M1**  
+- Description of the project   
+- [View project](project.md#project-empirical-m1)
+
 
 
 
