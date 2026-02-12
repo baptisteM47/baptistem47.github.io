@@ -26,9 +26,7 @@ Here i give a clear overview of all the differents projects i have done during m
 
 - Objective : ...
 - Methods : ...
-- Data used : put the link to the database used + comment on how we build it 
-- Results : 
-- Html Link : [https://baptistem47.github.io/Scoring_project/]
+- [Results / Report :] (https://baptistem47.github.io/Scoring_project/)
 - Status : Completed
 
 ## Project 3 - Python 
