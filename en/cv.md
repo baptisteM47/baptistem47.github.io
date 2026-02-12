@@ -92,11 +92,13 @@ Should you require the PDF version of my CV, you can download it here. Please no
 - Description of the project   
 - [View project](project.md#project-CBA)
 
+### **Projet 6 — Econometrics**  
+- Description of the project   
+- [View project](project.md#project-econometrics)
 
-- econometrics project (maybe)
-- Empirical M1
-- database project
-- 
+### **Projet 7 — Empirical M1**  
+- Description of the project   
+- [View project](project.md#project-empirical-m1)
 
 
 
