@@ -55,16 +55,18 @@ Here i give a clear overview of all the differents projects i have done during m
 
 - Objective : ...
 - Methods : ...
-- [Results / Report :]()
-- [Code :]()
+- [Results / Report :](https://github.com/baptisteM47/Econometrics/blob/main/Report%20-%20Victoria%20Godio%20and%20Baptiste%20Messant.pdf)
+- [Code 1 :](https://github.com/baptisteM47/Econometrics/blob/main/Exercise%201%20Baptiste%20Messant%20and%20Victoria%20Godio.qmd)
+- [Code 2 :](https://github.com/baptisteM47/Econometrics/blob/main/Exercice%202%20Baptiste%20Messant%20%20and%20%20Victoria%20Godio.qmd)
+- [Code 3 :](https://github.com/baptisteM47/Econometrics/blob/main/Exercise%203%20Baptiste%20Messant%20and%20Victoria%20Godio.qmd)
 - Status : Completed
 
 ## <a id="project-empirical-m1"></a> Project 7 - Empirical M1 
 
 - Objective : ...
 - Methods : ...
-- [Results / Report :]()
-- [Code :]()
+- [Results / Report :](https://github.com/baptisteM47/Empirical_M1/blob/main/Empirical_M1.pdf)
+- [Code :](https://github.com/baptisteM47/Empirical_M1/blob/main/code%20stata%20group%205%20applied.do)
 - Status : Completed
 
 
