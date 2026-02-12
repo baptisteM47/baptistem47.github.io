@@ -76,13 +76,24 @@ Should you require the PDF version of my CV, you can download it here. Please no
 - Description of the project   
 - [View project](project.md#project-empirical-m2)
 
+### **Projet 2 — Scoring Project**  
+- Description of the project   
+- [View project](project.md#project-scoring)
 
-- Scoring project
-- Python Project
-- Macro project
+### **Projet 3 — Python Project**  
+- Description of the project   
+- [View project](project.md#project-python)
+
+### **Projet 4 — Macroeconomics Project**  
+- Description of the project   
+- [View project](project.md#project-macro)
+
+### **Projet 5 — Cost Benefit Analysis Project**  
+- Description of the project   
+- [View project](project.md#project-CBA)
+
+
 - econometrics project (maybe)
-- CBA project
-- ERM project (alary part, maybe)
 - Empirical M1
 - database project
 - 
