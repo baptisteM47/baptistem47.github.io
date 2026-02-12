@@ -17,7 +17,7 @@ Welcome to my personal portfolio. Here you will find a clear overview of my care
 
 - **CV link :**  [CV](/fr/cv/)
 - **Projects link :**  [Projets](/fr/projects/)
-- **GitHub link :**  [Texte](liens vers mon github) https://github.com/TONPSEUDO
+- **GitHub link :**  [GitHub](https://github.com/baptisteM47)
 - **LinkedIn:** [linkedin.com/in/baptiste-messant](https://www.linkedin.com/in/baptiste-messant/)
 
 ## What I am looking for 
