@@ -43,29 +43,28 @@ Should you require the PDF version of my CV, you can download it here. Please no
 - 2025 - 2026 : **INTERNATIONAL MASTER 2 ECONOMICS OF GLOBAL RISK Toulouse School of Economics**
   - **Skills and classes :**
 
-    - Finance and Risk Analysis : 
-    - Long Term Asset Pricing : 
-    - Scoring :
-    - Cost Benefit Analysis :
-    - Entreprise Risk Management :
-    - Financial Econometrics :
-    - Extreme Risk Analysis :
-    - Python :
-    - Sustainable Finance :
-    - Time series :
-    - 
+    - **Long Term Asset Pricing :** Analysis on methods used to price long term events like climate change (discount rate computation)
+    - **Scoring :** Introduction to scoring methods and computations models (data analysis, regressions, decisions trees)
+    - **Cost Benefit Analysis :** Introduction to CBA analylisis with WTP/WTA and quantitative methods to price it 
+    - **Entreprise Risk Management :** Analysis of risk in differents company risk sectors (financials, Sustainability) using methods to quantify it and minimize it
+    - **Financial Econometrics :** Time series analysis applied to risk with models computations (GARCH, Value at risk)
+    - **Extreme Risk Analysis :** Analysis of extreme risk (tail risk) and use of methods to estimate them with time series data 
+    - **Python :** Introduction to basic python coding
+    - **Sustainable Finance :** Analysis of ESG and differents taxonomies to see how finance can work with climate change and how finance can help archieve global warming conditions 
+    - **Time series :** Introduction to time series statistics and models used for time series data analysis (AR, MA, ARMA...)
+    - **Macroeconomics of Risk :** Uncertainty analysis on Global markets and analysis of how markets responds to macro shocks (shocks related to risk and uncertainty)
     
 - 2024 - 2025 : **INTERNATIONAL MASTER 1 IN ECONOMICS Toulouse School of Economics**
   - **Skills and classes :**
 
-    - Macroeconomics : 
-    - Econometrics : 
-    - Data Bases : 
-    - Industrial Organisations : 
-    - Game Theory : 
-    - Market Finance :
-    - Corporate Finance : 
-    - Project Management : 
+    - **Macroeconomics :** Analysis of how shocks propagate in the economy 
+    - **Econometrics :** Introduction to econometrics modethods and models (IV, logistics regressions, MLE, GMM)
+    - **Data Bases :** Introduction to basic SQL coding and PowerBI use
+    - **Industrial Organisations :** Analysis of competition/differentiation on markets and between companies, analysis of merging companies case and monopoly case
+    - **Game Theory :** 
+    - **Market Finance :** Main financial instruments leaning
+    - **Corporate Finance :** 
+    - **Project Management :** 
     
 - 2021 - 2024 : ECONOMICS DEGREE Toulouse School of Economics SKILLS
   - **Skills and classes :** Mathematics, Econometrics, Microeconomics, Macroeconomics, Probability, Statistics
