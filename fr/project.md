@@ -64,7 +64,22 @@ Here i give a clear overview of all the differents projects i have done during m
 - [Code 3 :](https://github.com/baptisteM47/Econometrics/blob/main/Exercise%203%20Baptiste%20Messant%20and%20Victoria%20Godio.qmd)
 - Status : Completed
 
-## <a id="project-empirical-m1"></a> Project 7 - Empirical M1 
+## <a id="project-financial-econometrics"></a> Projet 7 — Financial Econometrics
+
+- Objective :  ...
+- Methods : ...
+- [Results / Report :](https://github.com/baptisteM47/Financial_econometrics/blob/f25e37ba4187f967190cdb625f7f445baedca085/HF_report.pdf)
+- [Code :](https://github.com/baptisteM47/Financial_econometrics/blob/f25e37ba4187f967190cdb625f7f445baedca085/Code_HF_Project.R)
+- Status : Completed
+
+## <a id="project-extreme-risk-analysis"></a> Projet 8 — Extreme Risk Analysis
+
+- Objective :  ...
+- Methods : ...
+- [Results / Report :](https://github.com/baptisteM47/Extreme_Risk/blob/e3f90fea6fbbf7ca59fb1e3dafed228a69af3453/US_Census_Perilhou_Messant_Godio.pdf)
+- Status : Completed
+
+## <a id="project-empirical-m1"></a> Project 9 - Empirical M1 
 
 - Objective : ...
 - Methods : ...
