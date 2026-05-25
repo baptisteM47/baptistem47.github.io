@@ -76,7 +76,7 @@ Here i give a clear overview of all the differents projects i have done during m
 
 - Objective :  ...
 - Methods : ...
-- [Code :](https://github.com/baptisteM47/Extreme_Risk/blob/e3f90fea6fbbf7ca59fb1e3dafed228a69af3453/US_Census_Perilhou_Messant_Godio.pdf)
+- [Results / Report :](https://github.com/baptisteM47/Extreme_Risk/blob/e3f90fea6fbbf7ca59fb1e3dafed228a69af3453/US_Census_Perilhou_Messant_Godio.pdf)
 - Status : Completed
 
 ## <a id="project-empirical-m1"></a> Project 9 - Empirical M1 
