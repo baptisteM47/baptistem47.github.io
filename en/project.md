@@ -16,8 +16,11 @@ Here i give a clear overview of all the differents projects i have done during m
 
 - Objective : This project aims to analyse the impact of climate uncertainty on companies’ green investments.
 - Methods : ...
-- [Results / Report :]()
-- [Code :]()
+- [Results / Report :](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/Empirical_Project_Perilhou_Messant_Godio.pdf)
+- [Code 1 (Financial data Descriptive Analysis):](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/00_descriptive_financial/00bis_descriptive.R)
+- [Code 2 (Text Data cleaning):](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/00_XML_Cleaning/00_XML_cleaning.R)
+- [Code 3 (CPU Index construction):](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/01_CPU_Construction/01_CPU_construction.R)
+- [Code 4 (Econometric Analysis):](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/02_regressions/02_regressions.R)
 - Status : Completed
 
 ## <a id="project-scoring"></a> Projet 2 — Scoring
@@ -65,12 +68,15 @@ Here i give a clear overview of all the differents projects i have done during m
 
 - Objective :  ...
 - Methods : ...
+- [Results / Report :](https://github.com/baptisteM47/Financial_econometrics/blob/f25e37ba4187f967190cdb625f7f445baedca085/HF_report.pdf)
+- [Code :](https://github.com/baptisteM47/Financial_econometrics/blob/f25e37ba4187f967190cdb625f7f445baedca085/Code_HF_Project.R)
 - Status : Completed
 
 ## <a id="project-extreme-risk-analysis"></a> Projet 8 — Extreme Risk Analysis
 
 - Objective :  ...
 - Methods : ...
+- [Code :](https://github.com/baptisteM47/Extreme_Risk/blob/e3f90fea6fbbf7ca59fb1e3dafed228a69af3453/US_Census_Perilhou_Messant_Godio.pdf)
 - Status : Completed
 
 ## <a id="project-empirical-m1"></a> Project 9 - Empirical M1 
