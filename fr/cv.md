@@ -96,7 +96,15 @@ Should you require the PDF version of my CV, you can download it here. Please no
 - Description of the project   
 - [View project](project.md#project-econometrics)
 
-### **Projet 7 — Empirical M1**  
+### **Projet 7 — Financial Econometrics**
+- project description
+- [View project](project.md#project-financial-econometrics)
+
+### **Projet 8 — Extreme Risk Analysis**  
+- project description
+- [View project](project.md#project-extreme-risk-analysis)
+
+### **Projet 9 — Empirical M1**  
 - Description of the project   
 - [View project](project.md#project-empirical-m1)
 
