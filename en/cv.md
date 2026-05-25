@@ -94,7 +94,15 @@ Should you require the PDF version of my CV, you can download it here. Please no
 - This project involves solving three exercises based on different real-life concepts using econometric methods.
 - [View project](project.md#project-econometrics)
 
-### **Projet 7 — Empirical M1**  
+### **Projet 7 — Financial Econometrics**
+- project description
+- 
+
+### **Projet 8 — Extreme Risk Analysis**  
+- project description
+- 
+
+### **Projet 9 — Empirical M1**  
 - The aim of this project is to evaluate the impact of socioeconomic factors on mental health disorders in the USA. It will use the MH-CLD dataset from 2018 to 2022.
 - [View project](project.md#project-empirical-m1)
 
