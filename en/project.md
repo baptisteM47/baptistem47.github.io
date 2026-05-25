@@ -18,7 +18,7 @@ Here i give a clear overview of all the differents projects i have done during m
 - Methods : ...
 - [Results / Report :]()
 - [Code :]()
-- Status : In progress
+- Status : Completed
 
 ## <a id="project-scoring"></a> Projet 2 — Scoring
 
@@ -61,7 +61,19 @@ Here i give a clear overview of all the differents projects i have done during m
 - [Code 3 :](https://github.com/baptisteM47/Econometrics/blob/main/Exercise%203%20Baptiste%20Messant%20and%20Victoria%20Godio.qmd)
 - Status : Completed
 
-## <a id="project-empirical-m1"></a> Project 7 - Empirical M1 
+## <a id="project-financial-econometrics"></a> Projet 7 — Financial Econometrics
+
+- Objective :  ...
+- Methods : ...
+- Status : Completed
+
+## <a id="project-extreme-risk-analysis"></a> Projet 8 — Extreme Risk Analysis
+
+- Objective :  ...
+- Methods : ...
+- Status : Completed
+
+## <a id="project-empirical-m1"></a> Project 9 - Empirical M1 
 
 - Objective : The aim of this project is to evaluate the impact of socioeconomic factors on mental health disorders in the USA. It will use the MH-CLD dataset from 2018 to 2022.
 - Methods : ...
