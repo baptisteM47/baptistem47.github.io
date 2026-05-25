@@ -96,11 +96,11 @@ Should you require the PDF version of my CV, you can download it here. Please no
 
 ### **Projet 7 — Financial Econometrics**
 - project description
-- 
+- [View project](project.md#project-financial-econometrics)
 
 ### **Projet 8 — Extreme Risk Analysis**  
 - project description
-- 
+- [View project](project.md#project-extreme-risk-analysis)
 
 ### **Projet 9 — Empirical M1**  
 - The aim of this project is to evaluate the impact of socioeconomic factors on mental health disorders in the USA. It will use the MH-CLD dataset from 2018 to 2022.
