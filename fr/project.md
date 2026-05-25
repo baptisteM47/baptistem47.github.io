@@ -14,10 +14,13 @@ Here i give a clear overview of all the differents projects i have done during m
 
 ## <a id="project-empirical-m2"></a> Projet 1 — Empirical M2
 
-- Objective : ...
+- Objective : This project aims to analyse the impact of climate uncertainty on companies’ green investments.
 - Methods : ...
-- [Results / Report :]()
-- [Code :]()
+- [Results / Report :](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/Empirical_Project_Perilhou_Messant_Godio.pdf)
+- [Code 1 (Financial data Descriptive Analysis):](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/00_descriptive_financial/00bis_descriptive.R)
+- [Code 2 (Text Data cleaning):](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/00_XML_Cleaning/00_XML_cleaning.R)
+- [Code 3 (CPU Index construction):](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/01_CPU_Construction/01_CPU_construction.R)
+- [Code 4 (Econometric Analysis):](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/02_regressions/02_regressions.R)
 - Status : Completed
 
 ## <a id="project-scoring"></a> Projet 2 — Scoring
