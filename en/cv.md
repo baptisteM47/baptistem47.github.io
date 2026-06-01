@@ -95,11 +95,11 @@ Should you require the PDF version of my CV, you can download it here. Please no
 - [View project](project.md#project-econometrics)
 
 ### **Projet 7 — Financial Econometrics**
-- project description
+- The aim of this project was to analyse the impact of trading activity on intraday volatility and liquidity using GARCH and HAR models
 - [View project](project.md#project-financial-econometrics)
 
 ### **Projet 8 — Extreme Risk Analysis**  
-- project description
+- The aim of this project was to use extreme risk analysis methods to analyse extreme value behavior in US cities population
 - [View project](project.md#project-extreme-risk-analysis)
 
 ### **Projet 9 — Empirical M1**  
