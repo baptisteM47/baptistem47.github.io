@@ -18,6 +18,12 @@ Should you require the PDF version of my CV, you can download it here. Please no
 - internships :
   
   - 2026 : **Risk Manager at IDEX, Energy Company**
+
+    - Daily market position analysis (exposure and volatility)
+    - Analysis and management of energy market risks (Gas, Electricity, GO) and counterparty risk management
+    - Risk reporting development on Excel / VBA / SQL
+    - Daily / Weekly market risk reporting
+    - Daily control of trading activity and market operations
     
   - 2025 : **Risk management analyst at Midi2i, Investment Fund**
     
