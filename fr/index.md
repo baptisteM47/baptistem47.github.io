@@ -6,20 +6,13 @@ title: Accueil
 
 # Baptiste Messant 
 
-TRADUIRE EN FRANÇAIS
+Diplômé d'un Master **Economics of Global Risks** à la Toulouse School of Economics, avec une expérience pratique en **Gestion des risques de marché énergétique** acquise lors d'un stage chez IDEX. Au cours de cette expérience, j'ai développé de solides compétences en **Suivi des positions de marché**, **Gestion des risques énergétiques** (Gaz, Électricité, GO), **Analyse du risque de contrepartie**, et **Développement de reportings de risque** sous Excel, VBA et SQL. Passionné par l'analyse quantitative des risques et les marchés financiers, je suis activement à la recherche d'un poste en **Risque de Marché** à partir d'**octobre 2026**, prêt à apporter rigueur analytique à de nouveaux défis.
 
-Final-year Master's student specialising in **Global Risks** at the Toulouse School of Economics.
-I am currently completing an internship as a **Risk Manager in the Energy Markets** department at IDEX, which will end on **13/10/2026**. 
+## Portfolio
 
-## Portfolio 
+Bienvenue sur mon portfolio personnel. Vous y trouverez un aperçu clair de mon parcours, de mes compétences, de mes expériences et de mes projets. Utilisez les liens ci-dessous pour naviguer dans mon portfolio.
 
-Welcome to my personal portfolio. Here you will find a clear overview of my career, skills, experiences and projects. Please use the links below to navigate through my portfolio. 
-
-- **CV link :**  [CV](/fr/cv/)
-- **Projects link :**  [Projets](/fr/projects/)
-- **GitHub link :**  [GitHub](https://github.com/baptisteM47)
-- **LinkedIn:** [linkedin.com/in/baptiste-messant](https://www.linkedin.com/in/baptiste-messant/)
-
-## What I am looking for 
-
-mettre les differentes volontée profesionelles avec les secteurs pays etc 
+- **CV :**  [CV](/fr/cv/)
+- **Projets :**  [Projets](/fr/projects/)
+- **GitHub :**  [GitHub](https://github.com/baptisteM47)
+- **LinkedIn :** [linkedin.com/in/baptiste-messant](https://www.linkedin.com/in/baptiste-messant/)
