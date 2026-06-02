@@ -6,8 +6,7 @@ title: Home
 
 # Baptiste Messant 
 
-Final-year Master's student specialising in **Global Risks** at the Toulouse School of Economics.
-I am currently completing an internship as a **Risk Manager in the Energy Markets** department at IDEX, which will end on **13/10/2026**. 
+Master's graduate in **Global Risks** from the Toulouse School of Economics, with hands-on experience in **Energy Market Risk** gained through an internship at IDEX. During this experience, I developed strong skills in **market position monitoring**, **energy risk management** (Gas, Electricity, GO), **counterparty risk analysis**, and **risk reporting development** using Excel, VBA and SQL. Passionate about quantitative risk analysis and financial markets, I am actively seeking a **Market Risk** position from **October 2026**, ready to bring both analytical rigour and a results-driven mindset to new challenges.
 
 ## Portfolio 
 
