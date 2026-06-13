@@ -14,8 +14,8 @@ Here i give a clear overview of all the differents projects i have done during m
 
 ## <a id="project-empirical-m2"></a> Projet 1 — Empirical M2
 
-- Objective : This project aims to analyse the impact of climate uncertainty on companies’ green investments.
-- [Results / Report :](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/Empirical_Project_Perilhou_Messant_Godio.pdf)
+- Objective : This project aims to analyse the impact of climate uncertainty on companies' green investments.
+- [Results / Report :](https://docs.google.com/viewer?url=https://raw.githubusercontent.com/baptisteM47/Empirical_M2/0c30372e6256a756c02b5f4f8e5955b931777a66/Empirical_Project_Perilhou_Messant_Godio.pdf)
 - [Code 1 (Financial data Descriptive Analysis):](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/00_descriptive_financial/00bis_descriptive.R)
 - [Code 2 (Text Data cleaning):](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/00_XML_Cleaning/00_XML_cleaning.R)
 - [Code 3 (CPU Index construction):](https://github.com/baptisteM47/Empirical_M2/blob/0c30372e6256a756c02b5f4f8e5955b931777a66/01_CPU_Construction/01_CPU_construction.R)
@@ -30,7 +30,7 @@ Here i give a clear overview of all the differents projects i have done during m
 
 ## <a id="project-python"></a> Project 3 - Python 
 
-- Objective : The aim of this project is to analyse “How do macroeconomic shocks such as Monetary policy, GDP, Consumption, Investment and Inflation affect the Euro-aera gouvernement zero-coupon yield curve across several maturities?”. The objective is to understand not only the overall impact of these shocks on the Euro-area yield curve, but also how their effects vary along the term structure for short, intermediate and long maturities.
+- Objective : The aim of this project is to analyse "How do macroeconomic shocks such as Monetary policy, GDP, Consumption, Investment and Inflation affect the Euro-aera gouvernement zero-coupon yield curve across several maturities?". The objective is to understand not only the overall impact of these shocks on the Euro-area yield curve, but also how their effects vary along the term structure for short, intermediate and long maturities.
 - [Results / Report :](https://baptistem47.github.io/Python_project/)
 - [Code : ](https://github.com/baptisteM47/Python_project/blob/main/python_project.qmd)
 - [Data :](https://github.com/baptisteM47/Python_project/blob/main/full_data%20(1).csv)
@@ -39,20 +39,20 @@ Here i give a clear overview of all the differents projects i have done during m
 ## <a id="project-macro"></a> Project 4 - Macroeconomics 
 
 - Objective : This project examines the impact of government spending shocks on the economic activity, focusing on real GDP, real consumption, and the Economic Policy Uncertainty index. Using quarterly U.S. data from 1947 to 2015.
-- [Results / Report :](https://github.com/baptisteM47/Macro_project/blob/main/Macroeconomics.pdf)
+- [Results / Report :](https://docs.google.com/viewer?url=https://raw.githubusercontent.com/baptisteM47/Macro_project/main/Macroeconomics.pdf)
 - [Code :](https://github.com/baptisteM47/Macro_project/blob/main/macrorisksVBR.qmd)
 - Status : Completed
 
 ## <a id="project-CBA"></a> Project 5 - CBA 
 
 - Objective : This project aims to evaluates economic and social efficiency of the NH1 project by comparing costs and benefits over a 25-year period.
-- [Results / Report :](https://github.com/baptisteM47/CBA_project/blob/main/NH1%20paper.pdf)
+- [Results / Report :](https://docs.google.com/viewer?url=https://raw.githubusercontent.com/baptisteM47/CBA_project/main/NH1%20paper.pdf)
 - Status : Completed
 
 ## <a id="project-econometrics"></a> Project 6 - Econometrics 
 
 - Objective : This project involves solving three exercises based on different real-life concepts using econometric methods.
-- [Results / Report :](https://github.com/baptisteM47/Econometrics/blob/main/Report%20-%20Victoria%20Godio%20and%20Baptiste%20Messant.pdf)
+- [Results / Report :](https://docs.google.com/viewer?url=https://raw.githubusercontent.com/baptisteM47/Econometrics/main/Report%20-%20Victoria%20Godio%20and%20Baptiste%20Messant.pdf)
 - [Code 1 :](https://github.com/baptisteM47/Econometrics/blob/main/Exercise%201%20Baptiste%20Messant%20and%20Victoria%20Godio.qmd)
 - [Code 2 :](https://github.com/baptisteM47/Econometrics/blob/main/Exercice%202%20Baptiste%20Messant%20%20and%20%20Victoria%20Godio.qmd)
 - [Code 3 :](https://github.com/baptisteM47/Econometrics/blob/main/Exercise%203%20Baptiste%20Messant%20and%20Victoria%20Godio.qmd)
@@ -61,20 +61,20 @@ Here i give a clear overview of all the differents projects i have done during m
 ## <a id="project-financial-econometrics"></a> Projet 7 — Financial Econometrics
 
 - Objective : The aim of this project was to analyse the impact of trading activity on intraday volatility and liquidity using GARCH and HAR models.
-- [Results / Report :](https://github.com/baptisteM47/Financial_econometrics/blob/f25e37ba4187f967190cdb625f7f445baedca085/HF_report.pdf)
+- [Results / Report :](https://docs.google.com/viewer?url=https://raw.githubusercontent.com/baptisteM47/Financial_econometrics/f25e37ba4187f967190cdb625f7f445baedca085/HF_report.pdf)
 - [Code :](https://github.com/baptisteM47/Financial_econometrics/blob/f25e37ba4187f967190cdb625f7f445baedca085/Code_HF_Project.R)
 - Status : Completed
 
 ## <a id="project-extreme-risk-analysis"></a> Projet 8 — Extreme Risk Analysis
 
 - Objective : The aim of this project was to use extreme risk analysis methods to analyse extreme value behavior in US cities population.
-- [Results / Report :](https://github.com/baptisteM47/Extreme_Risk/blob/e3f90fea6fbbf7ca59fb1e3dafed228a69af3453/US_Census_Perilhou_Messant_Godio.pdf)
+- [Results / Report :](https://docs.google.com/viewer?url=https://raw.githubusercontent.com/baptisteM47/Extreme_Risk/e3f90fea6fbbf7ca59fb1e3dafed228a69af3453/US_Census_Perilhou_Messant_Godio.pdf)
 - Status : Completed
 
 ## <a id="project-empirical-m1"></a> Project 9 - Empirical M1 
 
 - Objective : The aim of this project is to evaluate the impact of socioeconomic factors on mental health disorders in the USA. It will use the MH-CLD dataset from 2018 to 2022.
-- [Results / Report :](https://github.com/baptisteM47/Empirical_M1/blob/main/Empirical_M1.pdf)
+- [Results / Report :](https://docs.google.com/viewer?url=https://raw.githubusercontent.com/baptisteM47/Empirical_M1/main/Empirical_M1.pdf)
 - [Code :](https://github.com/baptisteM47/Empirical_M1/blob/main/code%20stata%20group%205%20applied.do)
 - Status : Completed
 
@@ -82,4 +82,3 @@ Here i give a clear overview of all the differents projects i have done during m
 ## Link to others pages
 
 [**Home**](../) · [**CV**](../cv/)
-
