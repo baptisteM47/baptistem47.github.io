@@ -1,0 +1,33 @@
+
+\begingroup
+\centering
+\begin{tabular}{lccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{3}{c}{abnormal\_vol}\\
+                  & Baseline & Raw VIX        & VIX(t-3) \\   
+   Model:         & (1)      & (2)            & (3)\\  
+   \midrule
+   \emph{Variables}\\
+   rel\_time-1    & 0.0122   & -0.0157        & 0.0191\\   
+                  & (0.0294) & (0.0316)       & (0.0290)\\   
+   rel\_time0     & -0.0363  & -0.0716$^{*}$  & -0.0242\\   
+                  & (0.0316) & (0.0355)       & (0.0309)\\   
+   rel\_time1     & -0.0088  & -0.0387        & 0.0131\\   
+                  & (0.0267) & (0.0312)       & (0.0246)\\   
+   rel\_time2     & -0.0614  & -0.0991$^{**}$ & -0.0669$^{*}$\\   
+                  & (0.0367) & (0.0420)       & (0.0373)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   company\_name  & Yes      & Yes            & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations   & 750      & 750            & 750\\  
+   R$^2$          & 0.09791  & 0.12498        & 0.13196\\  
+   Within R$^2$   & 0.01664  & 0.04616        & 0.05376\\  
+   \midrule \midrule
+   \multicolumn{4}{l}{\emph{Clustered (company\_name) standard-errors in parentheses}}\\
+   \multicolumn{4}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+

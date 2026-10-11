@@ -1,0 +1,977 @@
+---
+title: "Exercise 3"
+format: html
+editor: visual
+---
+
+## EXERCISE 3
+
+Pre-requisite : Load the packages and the data :
+
+```{r}
+
+pkgs <- c(
+  "AER",
+  "dplyr",
+  "tidyr",
+  "readxl",
+  "data.table",
+  "lmtest",
+  "sandwich", 
+  "MASS", "tidyverse", "nloptr", "Matrix", "stargazer", "tibble"
+  )
+
+to_install <- setdiff(pkgs, rownames(installed.packages()))
+if (length(to_install) > 0) {
+  install.packages(to_install, dependencies = TRUE)
+}
+
+invisible(lapply(pkgs, function(p) {
+  suppressPackageStartupMessages(library(p, character.only = TRUE))
+}))
+
+
+#Have to change the path just here 
+bdd_airlines <- read_excel("C:/Users/Victoria/Downloads/data_airlines.xlsx")
+
+```
+
+### QUESTION 1 + 2 + 3 :
+
+*Write a first paragraph describing the data. You may refer to Table 1 in the working paper for guidance.*
+
+See the report
+
+### QUESTION 4 :
+
+*Estimate the same demand model (using 2SLS with homogeneous passengers and a nested logit) as in the paper. To do this, you need to construct some of the explanatory variables, particularly the number of departures from each city. You can include fixed effects for cities and airlines. I provide an R code that performs the necessary calculations once all the variables have been computed (you may need to adapt it for your own specification).*
+
+*Try all combinations of three instruments. Report the following in a table: • Mean own-price elasticity • Estimates of the price coefficient • The mean Lerner index • The J-test statistic Select the subset of instruments that provides the "most coherent estimates" based on the guidelines you explain in the text. In particular, estimate the median own-price elasticity across products and compare your results with those found in our paper.*
+
+For this question, we will estimate the demand model using 2SLS with homogenous passengers and a nested logit. Before doing this we have to create new explanatory variables :
+
+First, we reuse the code provided on Moodle to create several explanatory variables:
+
+```{r}
+
+
+
+mydatainit <- as.data.frame(bdd_airlines)[, -1]
+
+
+###### Build ID
+mydatainit$ID=seq(1,nrow(mydatainit))
+nobs=max(mydatainit$ID)
+mydatainit$MkID=as.numeric(factor(mydatainit$Market))
+lis_markets=sort(unique(mydatainit$Market))
+nbmkt=max(mydatainit$MkID)
+mydatainit$FirmID=as.numeric(factor(mydatainit$Firm))
+mydata=mydatainit[order(mydatainit$MkID,mydatainit$FirmID),]
+
+
+### I recompute the shares
+newtot=data.table(mydata %>% group_by(MkID) %>% summarize(totpax = sum(Pax)))
+mydata <- merge(mydata,newtot,by="MkID")
+mydata$lnsjs0=log(mydata$Pax/(mydata$MarketSize-mydata$totpax))
+mydata$lnsjg=log(mydata$Pax/mydata$totpax)
+mydata$OutsideShare=(mydata$MarketSize-mydata$totpax)/mydata$MarketSize
+mydata$OwnShare=mydata$Pax/mydata$MarketSize
+
+
+
+
+#### Nb products per market per firm and index of the first one ########
+mydata$combination=paste(mydata$MkID,mydata$FirmID,sep="-")
+mydata$one<-1
+matproduct=data.table(mydata %>% group_by(combination) %>% summarize(nprod = sum(one), firmshare=sum(OwnShare), market = max(MkID), 
+                                                                     firm = max(FirmID)))
+matindp=matproduct[order(as.numeric(matproduct$market), as.numeric(matproduct$firm)),]
+
+#startm[i] index of the first product proposed by a given firm in a given market
+startm=rep(0,nrow(matindp))
+startm[1] <-1
+for(i in 2:nrow(matindp)){
+  startm[i] <- startm[i-1] + matindp$nprod[i-1]
+}
+mydata <- merge(mydata,matindp,by="combination")
+mydata=mydata[order(mydata$MkID,mydata$FirmID),]
+
+
+
+missing_vars <- setdiff(names(bdd_airlines)[-1], names(mydata))
+
+if (length(missing_vars) == 0) {
+  message("OK: all original variables from bdd_airlines are present in mydata.")
+} else {
+  warning(
+    "Some original variables from bdd_airlines are missing in mydata: ",
+    paste(missing_vars, collapse = ", ")
+  )
+}
+
+
+```
+
+We will have to add other explanatory variables to estimate the nested logit demand :
+
+#### Number of departures from each city
+
+According to the empirical paper, we will also add the maximum number of of direct flights offered at the itinerary's endpoints by the same carrier offering itinerary j, called here `OriginConn` .
+
+```{r}
+
+
+
+dep_city_firm <- mydata %>%
+  dplyr::filter(Stops == 0) %>%
+  dplyr::select(MkID, Firm, Origin, Dest) %>%
+  pivot_longer(
+    cols = c(Origin, Dest),
+    names_to = "endpoint",
+    values_to = "City"
+  ) %>%
+  group_by(Firm, City) %>%
+  summarise(
+    departures_nonstop = n_distinct(MkID),
+    .groups = "drop"
+  )
+
+mydata <- mydata %>%
+  left_join(dep_city_firm, by = c("Firm" = "Firm", "Origin" = "City")) %>%
+  rename(dep_nonstop_origin = departures_nonstop) %>%
+  left_join(dep_city_firm, by = c("Firm" = "Firm", "Dest" = "City")) %>%
+  rename(dep_nonstop_dest = departures_nonstop) %>%
+  mutate(
+    dep_nonstop_origin = if_else(is.na(dep_nonstop_origin), 0L, dep_nonstop_origin),
+    dep_nonstop_dest   = if_else(is.na(dep_nonstop_dest), 0L, dep_nonstop_dest),
+    OriginConn = pmax(dep_nonstop_origin, dep_nonstop_dest)
+  ) %>%
+  dplyr::select(-dep_nonstop_origin, -dep_nonstop_dest)
+
+
+
+```
+
+#### Distance and square distance variables
+
+According to the working paper, we include the variable Distance and Distance\^2 as observed as demand shifters. In the following code we compute the distance by computing the product between two variables `DirectDistance` and `ExtraMiles`. Indeed, we have assumed that `ExtraMiles` represents the multiplier of the direct distance for flight with stops and then standardize the variable to reduce the collinearity. This allows us to estimate more accurately the total distance traveled by the passengers, which is generally in case of stops higher distance than direct distance due to detours with stops.
+
+```{r}
+
+
+mydata <- mydata %>%
+  mutate(
+    Distance1  = DirectDistance * ExtraMiles,
+    Distance  = as.numeric(scale(Distance1, center = TRUE, scale = TRUE)),
+    Distance2 = Distance^2
+  )
+
+```
+
+#### Dummy for companies
+
+```{r}
+
+# Classification acccording the paper
+LEGACY_CODES <- c("AA", "DL", "UA", "US")  #The 4 main legacy
+SOUTHWEST <- "WN"  #Hybrid system 
+LCC_CODES <- c("F9", "NK", "B6", "SY", "VX", "G4", "U5", "FL")  # Low-cost
+OTHER_CODES <- c("AS")  # Alaska et autres
+
+mydata <- mydata %>%
+  mutate(
+    # Catégories exclusives
+    is_Legacy = as.integer(Firm %in% LEGACY_CODES),
+    is_WN = as.integer(Firm == "WN"),
+    is_LCC = as.integer(Firm %in% LCC_CODES),
+    is_Other = as.integer(Firm %in% OTHER_CODES),
+    
+    # Dummies individuels pour les carrier FE (comme dans le papier)
+    # AA est la référence, donc pas de dummy AA
+    DL = as.integer(Firm == "DL"),
+    UA = as.integer(Firm == "UA"),
+    US = as.integer(Firm == "US"),
+    WN = as.integer(Firm == "WN"),
+    LCC = as.integer(Firm %in% LCC_CODES),  # 1 dummy pour tous les LCC
+    others = as.integer(Firm %in% OTHER_CODES)  # 1 dummy pour les autres
+  )
+
+
+
+```
+
+#### City list
+
+We will also create other variables to include fixed effects. In the working paper, they have added carrier and city as fixed effects. We already have the variable carrier in the data but not the city, therefore we include it in the data with the following code.
+
+```{r}
+
+list_city <- unique(c(mydata$Origin, mydata$Dest))[-1]
+nbfe <- length(list_city)
+
+cf <- matrix(0, nrow(mydata), nbfe)
+
+for (j in 1:nbfe) {
+  nom <- list_city[j]
+  cf[, j] <- 1 * ((mydata$Origin == nom) + (mydata$Dest == nom))
+}
+
+cf <- data.frame(cf, stringsAsFactors = FALSE)
+colnames(cf) <- list_city
+
+mydata <- cbind(mydata, cf)
+
+
+```
+
+#### Instruments
+
+Now we will create the variables to get the instrument in the data. Firstly, in the data we already have the fuel cost per seat and in the following code we will create the dummy for monopoly, number of competing products, and the number of competitors of the same type (LCC and FSC).
+
+By definition, a monopoly is defined when it exists only one company in a market. Therefore, we have constructed the dummy for monopoly by looking at the total number of firms for each market (defined as a non-directional pair of two cities).
+
+The number of competing products is defined as the total number of products offered in a given market by rival airlines, excluding products offered by the same firm.
+
+##### Dummy for monopoly and Number of competing products
+
+```{r}
+
+mydata <- mydata[, !duplicated(names(mydata))]
+
+
+mydata <- mydata %>%
+  group_by(MkID) %>%
+  mutate(
+    number_firm = n_distinct(Firm),
+    Monopoly = as.integer(number_firm == 1),
+    number_product = n(),
+    CompetingProducts = number_product - 1
+  ) %>%
+  ungroup()
+
+
+```
+
+##### Number of competitors of the same type (LCC vs. FSC)
+
+We construct the number of same type competitors by counting, within each market, how many airlines belong to the same carrier type (LCC vs FSC) and subtracting one to exclude the firm itself.
+
+Here we include in the FSC group the 4 main legacy carriers and the Others, and we define the LCC group by the carriers defined as LCC, and we decided to exclude the Southwest Airlines (WN), as in the working paper they characterized WN as not being par of the 4 main legacy carriers, due to its hybrid system and is not part of the Others and LCC groups. Therefore, we have decided to create three categories to be in line with the paper : LCC, FSC and WN.
+
+Additionally, we assume that :
+
+B6 = Jet Blue NK = Spirit Airlines F9 = Frontier Airlines VX = Virgin Airlines SY = Sun Country Airlines G4 = Allegiant Air U5 = USA3000 Airlines AS = Alaska Airlines FL = Air Tran Airways UA = United Airlines DL = Delta Airlines AA = American Airlines US = US Airways WN = Southwest Airlines
+
+```{r}
+
+mydata <- mydata %>%
+  # Definition of FSC
+  mutate(
+    FSC = as.integer(is_Legacy == 1 | is_Other == 1)
+  ) %>%
+  group_by(MkID) %>%
+  mutate(
+    n_FSC_m = n_distinct(Firm[FSC == 1]),
+    n_LCC_m = n_distinct(Firm[is_LCC == 1])
+  ) %>%
+  ungroup() %>%
+  mutate(
+    SameTypeCompetitors = case_when(
+      FSC == 1      ~ pmax(n_FSC_m - 1, 0),
+      is_LCC == 1   ~ pmax(n_LCC_m - 1, 0),
+      is_WN == 1    ~ 0,     
+      TRUE          ~ NA_real_
+    )
+  )
+
+```
+
+#### 2SLS Regression :
+
+##### Model 1 : Fuel_Cost_per_seat + Monopoly + SameTypeCompetitors
+
+```{r}
+
+list_regressors=paste("Price + lnsjg + Stops + OriginConn + Distance + Distance2 + DL + UA + US + WN + LCC + others",
+                      paste(list_city, collapse = " + "),sep=" + ")
+
+list_instruments1=paste("Stops + OriginConn + Distance + Distance2 + DL + UA + US + WN + LCC + others",
+                        paste(list_city, collapse = " + "),
+                        "Fuel_Cost_per_seat + Monopoly + SameTypeCompetitors",sep=" + ")
+
+##### 2SLS ######
+lhs <- "lnsjs0"
+formula1 <- as.formula(paste(paste(lhs, list_regressors, sep = " ~ "), list_instruments1, sep = " | "))
+nliv1 <- ivreg(formula1, data = mydata)
+
+#summary(nliv)
+summary(nliv1, vcov = sandwich, diagnostics = TRUE)
+stderr_d1=sqrt(diag(nliv1$cov.unscaled))
+lambda1=1-nliv1$coefficients[3]
+alpha1=-nliv1$coefficients[2]
+theta0d1=nliv1$coefficients
+
+##### Some outcomes ########
+
+#### Markups
+mydata$markup1=-lambda1/alpha1/((1-lambda1)*mydata$firmshare/(1-mydata$OutsideShare)+lambda1*mydata$firmshare-1)
+mydata$mc1= mydata$Price - mydata$markup1
+mydata$lerner1=(mydata$markup1)/mydata$Price
+summary(mydata$lerner1)
+summary(mydata$mc1)
+
+#### Price elasticities
+own_price_elas1=(alpha1*mydata$Price)*(((1-lambda1)/(1-mydata$OutsideShare)+lambda1)*(mydata$OwnShare)-1)/lambda1
+mydata$own_price1=own_price_elas1
+
+summary(mydata$mc1)
+summary(mydata$lerner1)
+mean_own_price_elas1 <- mean(own_price_elas1)
+summary(own_price_elas1)
+mean_lerner1 <- mean(mydata$lerner1)
+price_coef1 <- coef(nliv1)["Price"]
+sigma1 <- coef(nliv1)["lnsjg"]
+
+s1 <- summary(nliv1, vcov = sandwich, diagnostics = TRUE)
+diag1 <- s1$diagnostics
+test_name1 <- grep("Sargan", rownames(diag1), value = TRUE)[1]
+J_stat1 <- diag1[test_name1, "statistic"]
+J_pval1 <- diag1[test_name1, "p-value"]
+
+```
+
+##### Model 2 : Fuel_Cost_per_seat + Monopoly + CompetingProducts
+
+```{r}
+
+list_regressors=paste("Price + lnsjg + Stops + OriginConn + Distance + Distance2 + DL + UA + US + WN + LCC + others",paste(list_city, collapse = " + "),sep=" + ")
+list_instruments2=paste("Stops + OriginConn + Distance + Distance2 + DL + UA + US + WN + LCC + others",paste(list_city, collapse = " + "),
+                       "Fuel_Cost_per_seat + Monopoly + CompetingProducts",sep=" + ")
+
+##### 2SLS ######
+lhs <- "lnsjs0"
+formula2 <- as.formula(paste(paste(lhs, list_regressors, sep = " ~ "), list_instruments2, sep = " | "))
+nliv2 <- ivreg(formula2, data = mydata)
+
+#summary(nliv)
+summary(nliv2, vcov = sandwich, diagnostics = TRUE)
+stderr_d2=sqrt(diag(nliv2$cov.unscaled))
+lambda2=1-nliv2$coefficients[3]
+alpha2=-nliv2$coefficients[2]
+theta0d2=nliv2$coefficients
+
+##### Some outcomes ########
+
+#### Markups
+mydata$markup2=-lambda2/alpha2/((1-lambda2)*mydata$firmshare/(1-mydata$OutsideShare)+lambda2*mydata$firmshare-1)
+mydata$mc2= mydata$Price - mydata$markup2
+mydata$lerner2=(mydata$markup2)/mydata$Price
+summary(mydata$lerner2)
+summary(mydata$mc2)
+
+
+
+
+#### Price elasticities
+own_price_elas2=(alpha2*mydata$Price)*(((1-lambda2)/(1-mydata$OutsideShare)+lambda2)*(mydata$OwnShare)-1)/lambda2
+mydata$own_price2=own_price_elas2
+
+
+summary(mydata$mc2)
+summary(mydata$lerner2)
+mean_own_price_elas2 <- mean(own_price_elas2)
+summary(own_price_elas2)
+mean_lerner2 <- mean(mydata$lerner2)
+price_coef2 <- coef(nliv2)["Price"]
+sigma2 <- coef(nliv2)["lnsjg"]
+
+s2 <- summary(nliv2, vcov = sandwich, diagnostics = TRUE)
+diag2 <- s2$diagnostics
+test_name2 <- grep("Sargan", rownames(diag2), value = TRUE)[1]
+J_stat2 <- diag2[test_name2, "statistic"]
+J_pval2 <- diag2[test_name2, "p-value"]
+
+
+
+
+
+
+
+```
+
+##### Model 3 : Fuel_Cost_per_seat + CompetingProducts + SameTypeCompetitors
+
+```{r}
+
+list_regressors=paste("Price + lnsjg + Stops + OriginConn + Distance + Distance2 + DL + UA + US + WN + LCC + others",paste(list_city, collapse = " + "),sep=" + ")
+list_instruments3=paste("Stops + OriginConn + Distance + Distance2 + DL + UA + US + WN + LCC + others",paste(list_city, collapse = " + "),
+                       "Fuel_Cost_per_seat + CompetingProducts + SameTypeCompetitors",sep=" + ")
+
+##### 2SLS ######
+lhs <- "lnsjs0"
+formula3 <- as.formula(paste(paste(lhs, list_regressors, sep = " ~ "), list_instruments3, sep = " | "))
+nliv3 <- ivreg(formula3, data = mydata)
+
+#summary(nliv)
+summary(nliv3, vcov = sandwich, diagnostics = TRUE)
+stderr_d3=sqrt(diag(nliv3$cov.unscaled))
+lambda3=1-nliv3$coefficients[3]
+alpha3=-nliv3$coefficients[2]
+theta0d3=nliv3$coefficients
+
+##### Some outcomes ########
+
+#### Markups
+mydata$markup3=-lambda3/alpha3/((1-lambda3)*mydata$firmshare/(1-mydata$OutsideShare)+lambda3*mydata$firmshare-1)
+mydata$mc3= mydata$Price - mydata$markup3
+mydata$lerner3=(mydata$markup3)/mydata$Price
+summary(mydata$lerner3)
+
+#### Price elasticities
+own_price_elas3=(alpha3*mydata$Price)*(((1-lambda3)/(1-mydata$OutsideShare)+lambda3)*(mydata$OwnShare)-1)/lambda3
+mydata$own_price3=own_price_elas3
+
+
+summary(mydata$mc3)
+summary(mydata$lerner3)
+mean_own_price_elas3 <- mean(own_price_elas3)
+summary(own_price_elas3)
+mean_lerner3 <- mean(mydata$lerner3)
+price_coef3 <- coef(nliv3)["Price"]
+sigma3 <- coef(nliv3)["lnsjg"]
+
+s3 <- summary(nliv3, vcov = sandwich, diagnostics = TRUE)
+diag3 <- s3$diagnostics
+test_name3 <- grep("Sargan", rownames(diag3), value = TRUE)[1]
+J_stat3  <- diag3[test_name3, "statistic"]
+J_pval3  <- diag3[test_name3, "p-value"]
+
+
+```
+
+##### Model 4 : CompetingProducts + Monopoly + SameTypeCompetitors
+
+```{r}
+list_regressors <- paste(
+  "Price + lnsjg + Stops + OriginConn + Distance + Distance2 + DL + UA + US + WN + LCC + others",
+  paste(list_city, collapse = " + "),
+  sep = " + "
+)
+
+list_instruments4 <- paste(
+  "Stops + OriginConn + Distance + Distance2 + DL + UA + US + WN + LCC + others",
+  paste(list_city, collapse = " + "),
+  "CompetingProducts + Monopoly + SameTypeCompetitors",
+  sep = " + "
+)
+
+##### 2SLS ######
+lhs <- "lnsjs0"
+formula4 <- as.formula(paste(paste(lhs, list_regressors, sep = " ~ "), list_instruments4, sep = " | "))
+nliv4 <- ivreg(formula4, data = mydata)
+
+summary(nliv4, vcov = sandwich, diagnostics = TRUE)
+
+stderr_d4 <- sqrt(diag(nliv4$cov.unscaled))
+
+lambda4 <- 1 - nliv4$coefficients["lnsjg"]
+alpha4  <- -nliv4$coefficients["Price"]
+theta0d4 <- nliv4$coefficients
+
+##### Some outcomes ########
+
+#### Markups
+mydata$markup4 <- -lambda4/alpha4/((1-lambda4)*mydata$firmshare/(1-mydata$OutsideShare)+lambda4*mydata$firmshare-1)
+mydata$mc4 <- mydata$Price - mydata$markup4
+mydata$lerner4 <- mydata$markup4 / mydata$Price
+summary(mydata$lerner4)
+
+#### Price elasticities
+own_price_elas4 <- (alpha4*mydata$Price)*(((1-lambda4)/(1-mydata$OutsideShare)+lambda4)*(mydata$OwnShare)-1)/lambda4
+mydata$own_price4 <- own_price_elas4
+
+summary(mydata$mc4)
+summary(mydata$lerner4)
+
+mean_own_price_elas4 <- mean(mydata$own_price4, na.rm = TRUE)
+mean_lerner4 <- mean(mydata$lerner4, na.rm = TRUE)
+
+price_coef4 <- coef(nliv4)["Price"]
+sigma4 <- coef(nliv4)["lnsjg"]
+
+s4 <- summary(nliv4, vcov = sandwich, diagnostics = TRUE)
+diag4 <- s4$diagnostics
+test_name4 <- grep("Sargan", rownames(diag4), value = TRUE)[1]
+J_stat4 <- diag4[test_name4, "statistic"]
+J_pval4 <- diag4[test_name4, "p-value"]
+
+```
+
+#### Table of results
+
+```{r}
+library(tibble)
+
+table_results_wide <- tibble(
+  stat = c("instruments",
+           "mean_own_price_elas",
+           "mean_lerner",
+           "price_coef",
+           "sigma",
+           "J_stat",
+           "J_pval"),
+  model1 = c("Fuel_Cost_per_seat + Monopoly + SameTypeCompetitors",
+             round(mean_own_price_elas1,4),
+             round(mean_lerner1,4),
+             round(price_coef1,7),
+             round(sigma1,5),
+             round(J_stat1,4),
+             round(J_pval1,4)),
+  model2 = c("Fuel_Cost_per_seat + Monopoly + CompetingProducts",
+             round(mean_own_price_elas2,4),
+             round(mean_lerner2,4),
+             round(price_coef2,7),
+             round(sigma2,5),
+             round(J_stat2,4),
+             round(J_pval2,4)),
+  model3 = c("Fuel_Cost_per_seat + CompetingProducts + SameTypeCompetitors",
+             round(mean_own_price_elas3,4),
+             round(mean_lerner3,4),
+             round(price_coef3,7),
+             round(sigma3,5),
+             round(J_stat3,4),
+             round(J_pval3,4)),
+  model4 = c("CompetingProducts + Monopoly + SameTypeCompetitors",
+             round(mean_own_price_elas4,4),
+             round(mean_lerner4,4),
+             round(price_coef4,7),
+             round(sigma4,5),
+             round(J_stat4,4),
+             round(J_pval4,4))
+)
+
+table_results_wide
+
+```
+
+Now we have to estimate the median own price elasticity across the products :
+
+```{r}
+
+median_own_price_elas1 <- median(mydata$own_price1, na.rm = TRUE)
+median_own_price_elas2 <- median(mydata$own_price2, na.rm = TRUE)
+median_own_price_elas3 <- median(mydata$own_price3, na.rm = TRUE)
+median_own_price_elas4 <- median(mydata$own_price4, na.rm = TRUE)
+
+
+median_table <- tibble(
+  Model = c("Model 1", "Model 2", "Model 3", "Model 4"),
+  Median_own_price_elasticity = c(
+    median_own_price_elas1,
+    median_own_price_elas2,
+    median_own_price_elas3,
+    median_own_price_elas4
+  )
+)
+
+median_table
+
+```
+
+After having computed the mean / median own-price elasticity, estimates of the price coefficient and sigma, the mean Lerner Index, the J test statistic on all the possible combinations of three instruments, including Fuel cost per seat, dummy for monopoly, number of competing products, number of competitors of the same type). We have to select the model that gives the most coherent estimates. (See the report)
+
+### QUESTION 5
+
+*Regress the estimated marginal costs derived from the demand estimation on the "usual characteristics," following the approach in our working paper.*
+
+The following code extract the estimated marginal costs from the model 4 (model chosen from the previous question)
+
+**Creation of the variable short-haul and long-haul itinerary dummies and the variable Connections following the methodology of the working paper**
+
+```{r}
+
+
+
+library(dplyr)
+library(tidyr)
+
+
+segments <- mydata %>%
+  dplyr::select(Firm, Origin, Dest, C1, Stops) %>%
+  dplyr::distinct()
+
+
+direct_dests <- segments %>%
+  dplyr::filter(Stops == 0) %>%
+  dplyr::select(Firm, City = Origin, Dest) %>%
+  dplyr::distinct()
+
+
+hub_direct_dests <- segments %>%
+  dplyr::filter(Stops == 0) %>%
+  dplyr::select(Firm, Hub = Origin, Dest) %>%
+  dplyr::distinct()
+
+
+onestop_dests <- segments %>%
+  dplyr::filter(Stops == 1, !is.na(C1)) %>%
+  dplyr::select(Firm, City = Origin, Hub = C1) %>%
+  dplyr::distinct() %>%
+  dplyr::left_join(
+    hub_direct_dests,
+    by = c("Firm", "Hub"),
+    relationship = "many-to-many"
+  ) %>%
+  dplyr::select(Firm, City, Dest) %>%
+  dplyr::distinct()
+
+
+total_reachable <- dplyr::bind_rows(direct_dests, onestop_dests) %>%
+  dplyr::distinct() %>%
+  dplyr::group_by(Firm, City) %>%
+  dplyr::summarise(Total_Reachable = dplyr::n_distinct(Dest), .groups = "drop")
+
+
+mydata <- mydata %>%
+  dplyr::left_join(total_reachable, by = c("Firm" = "Firm", "Origin" = "City")) %>%
+  dplyr::rename(Reachable_Origin = Total_Reachable) %>%
+  dplyr::left_join(total_reachable, by = c("Firm" = "Firm", "Dest" = "City")) %>%
+  dplyr::rename(Reachable_Dest = Total_Reachable) %>%
+  dplyr::left_join(total_reachable, by = c("Firm" = "Firm", "C1" = "City")) %>%
+  dplyr::rename(Reachable_Stop = Total_Reachable) %>%
+  dplyr::mutate(
+    Reachable_Origin = tidyr::replace_na(Reachable_Origin, 0L),
+    Reachable_Dest   = tidyr::replace_na(Reachable_Dest, 0L),
+    Reachable_Stop   = tidyr::replace_na(Reachable_Stop, 0L),
+
+
+    n_nodes = ifelse(Stops == 1 & !is.na(C1), 3L, 2L),
+
+
+    Connections = (Reachable_Origin + Reachable_Dest +
+                     ifelse(n_nodes == 3L, Reachable_Stop, 0L)) / n_nodes
+  )
+
+```
+
+```{r}
+
+library(tidyverse)
+library(stargazer)
+library(dplyr)
+
+mydata <- mydata %>%
+  mutate(mc_hat = mc4)
+
+summary(mydata$mc_hat)
+stopifnot(all(is.finite(mydata$mc_hat[!is.na(mydata$mc_hat)])))
+
+
+mydata <- mydata %>%
+  mutate(
+    # Dummy short/long-haul
+    Short = as.integer(DirectDistance <= 1500),
+    Long  = as.integer(DirectDistance > 1500),
+
+    # Intercepts (short vs long)
+    Intercept_Short = Short,
+    Intercept_Long  = Long,
+
+    # Indirect
+    Indirect = as.integer(Stops == 1),
+    
+    # Distance (short vs long)
+    Distance_Short = (DirectDistance * Short), 
+    Distance_Long  = (DirectDistance * Long),   
+
+    # Interactions (short vs long)
+    Indirect_Short = Indirect * Short,
+    Indirect_Long  = Indirect * Long,
+    
+    # Connections (short vs long)
+    Connections_Short = Connections * Short,
+    Connections_Long  = Connections * Long)
+
+
+# Formula
+mc_formula <- as.formula(
+  mc_hat ~ 
+  Intercept_Short + Intercept_Long +
+  Indirect_Short + Indirect_Long +
+  Distance_Short + Distance_Long +
+  Connections_Short + Connections_Long +
+  DL + UA + US + WN + LCC + others - 1 )
+
+
+
+# Estimation OLS
+mc_model <- lm(mc_formula, data = mydata)
+
+summary(mc_model)
+
+
+
+
+```
+
+### QUESTION 6
+
+*Re-estimate the model using GMM. Compare the optimal GMM with the basic model using W = Id.*
+
+For this question we will reuse the model established in the question 5 by using GMM estimation using the GMM optimal and the basic model using W = Id
+
+We have reused and adapted the code given on Moodle
+
+```{r}
+
+
+library(MASS)
+library(data.table)
+library(tidyverse)
+library(AER)
+library(nloptr)
+library(Matrix)
+
+
+nliv <- nliv4
+list_instruments <- list_instruments4
+theta0d <- theta0d4
+stderr_d <- stderr_d4
+
+# Use marginal costs from the model 4 (the model chosen in the previous questions)
+mydata$mc <- mydata$mc4
+
+nobs <- nrow(mydata)
+
+#Supply estimation
+
+lhs <- "mc"
+
+supply_spec <- "mc ~ Intercept_Short + Intercept_Long +
+  Indirect_Short + Indirect_Long +
+  Distance_Short + Distance_Long +
+  Connections_Short + Connections_Long +
+  DL + UA + US + WN + LCC + others - 1 "
+
+reg_supply  <- "Intercept_Short + Intercept_Long +
+  Indirect_Short + Indirect_Long +
+  Distance_Short + Distance_Long +
+  Connections_Short + Connections_Long +
+  DL + UA + US + WN + LCC + others"
+
+supply_est <- lm(as.formula(supply_spec), data = mydata)
+summary(supply_est)
+
+theta0s  <- supply_est$coefficients
+stderr_s <- sqrt(diag(vcov(supply_est)))
+
+
+theta0  <- c(theta0d, theta0s)
+stderr0 <- c(stderr_d, stderr_s)
+
+
+p_OLS_2SLS <- 2 * pnorm(-abs((theta0) / stderr0)) 
+
+
+#Matrix for GMM
+nd <- length(nliv$coefficients)
+ns <- length(supply_est$coefficients)
+
+
+datademand <- strsplit(list_regressors, split = " + ", fixed = TRUE)[[1]]
+mat_d <- as.matrix(cbind(1, mydata[, datademand]))
+
+
+instrdemand <- strsplit(list_instruments, split = " + ", fixed = TRUE)[[1]]
+Z_d <- as.matrix(cbind(1, mydata[, instrdemand]))
+
+
+Z_s <- model.matrix(as.formula(paste("~", reg_supply, "- 1")), data = mydata)
+
+
+stopifnot(ncol(Z_s) == length(theta0s))
+
+
+mean_moment <- function(theta){
+  theta_d <- theta[1:nd]
+  theta_s <- theta[(nd+1):(nd+ns)]
+  
+
+  xi  <- mydata$lnsjs0 - mat_d %*% theta_d
+  xi_d <- matrix(xi, nrow = nobs, ncol = ncol(Z_d))
+  mean_d <- apply(Z_d * xi_d, 2, mean)
+
+  lambdaloc <- 1 - theta_d[3]
+  alphaloc  <- -theta_d[2]
+  
+  markuploc <- -lambdaloc/alphaloc /
+    ((1-lambdaloc)*mydata$firmshare/(1-mydata$OutsideShare) + lambdaloc*mydata$firmshare - 1)
+  
+  mc <- (mydata$Price - markuploc)
+  
+  psi <- mc - Z_s %*% theta_s
+  psi_s <- matrix(psi, nrow = nrow(Z_s), ncol = ncol(Z_s))
+  mean_s <- apply(Z_s * psi_s, 2, mean)
+  
+  as.vector(c(mean_d, mean_s))
+}
+
+varmom <- function(theta){
+  theta_d <- theta[1:nd]
+  theta_s <- theta[(nd+1):(nd+ns)]
+  
+# Demand moments
+  xi  <- mydata$lnsjs0 - mat_d %*% theta_d
+  xi_d <- matrix(xi, nrow = nobs, ncol = ncol(Z_d))
+  momd <- Z_d * xi_d
+  
+# Supply moments
+  lambdaloc <- 1 - theta_d[3]
+  alphaloc  <- -theta_d[2]
+  
+  markuploc <- -lambdaloc/alphaloc /
+    ((1-lambdaloc)*mydata$firmshare/(1-mydata$OutsideShare) + lambdaloc*mydata$firmshare - 1)
+  
+  mc <- (mydata$Price - markuploc)
+  
+  psi <- mc - Z_s %*% theta_s
+  psi_s <- matrix(psi, nrow = nrow(Z_s), ncol = ncol(Z_s))
+  moms <- Z_s * psi_s
+  
+  mom <- cbind(momd, moms)
+  
+  mombar <- apply(mom, 2, mean)
+  (t(mom) %*% mom)/nobs - mombar %*% t(mombar)
+}
+
+meandmdtheta <- function(theta){
+  theta_d <- theta[1:nd]
+  theta_s <- theta[(nd+1):(nd+ns)]
+  
+  matm0 <- matrix(0, nrow = ncol(Z_d) + ncol(Z_s), ncol = nd + ns)
+  
+
+  matm0[1:ncol(Z_d), 1:nd] <- -(t(Z_d) %*% mat_d)/nobs
+  
+
+  matm0[(ncol(Z_d)+1):(ncol(Z_d)+ncol(Z_s)), (nd+1):(nd+ns)] <- -(t(Z_s) %*% Z_s)/nobs
+  
+
+  lambdaloc <- 1 - theta_d[3]
+  alphaloc  <- -theta_d[2]
+  
+  markuploc <- -lambdaloc/alphaloc /
+    ((1-lambdaloc)*mydata$firmshare/(1-mydata$OutsideShare) + lambdaloc*mydata$firmshare - 1)
+  
+
+  matm0[(ncol(Z_d)+1):(ncol(Z_d)+ncol(Z_s)), 2] <- (-1/alphaloc) * (t(Z_s) %*% markuploc)/nobs
+  
+
+  Dm <- as.vector(1/((1-lambdaloc)*mydata$firmshare/(1-mydata$OutsideShare) + lambdaloc*mydata$firmshare - 1))
+  dermkupdl <- markuploc/lambdaloc + (mydata$firmshare * mydata$OutsideShare * markuploc * Dm)/(1 - mydata$OutsideShare)
+  
+
+  matm0[(ncol(Z_d)+1):(ncol(Z_d)+ncol(Z_s)), 3] <- (t(Z_s) %*% dermkupdl)/nobs
+  
+  matm0
+}
+
+
+#GMM
+GMM1 <- function(theta){
+  m <- mean_moment(theta)
+  as.numeric(t(m) %*% m)
+}
+
+#Optimitization 
+theta.init <- theta0
+nparam <- length(theta.init)
+
+lb0 <- rep(-Inf, nparam)
+ub0 <- rep(+Inf, nparam)
+
+# Bounds defined from the Moodle code
+ub0[2] <- -1e-5
+lb0[3] <-  1e-10
+ub0[3] <-  1 - 1e-10
+
+
+#Basic GMM 
+Estim_NL_ID <- nloptr(
+  x0 = theta.init,
+  eval_f = GMM1,
+  eval_grad_f = NULL,
+  lb = lb0,
+  ub = ub0,
+  opts = list(
+    "algorithm" = "NLOPT_LN_BOBYQA",
+    ftol_rel = 1.e-7, ftol_abs = 1.e-9,
+    xtol_rel = 1.e-7, xtol_abs = 0,
+    maxeval = 100000, "print_level" = 2
+  )
+)
+
+thetafin <- Estim_NL_ID$solution
+
+
+W <- diag(ncol(Z_d) + ncol(Z_s))
+Gm <- meandmdtheta(thetafin)
+Varm <- varmom(thetafin)
+Mat1 <- MASS::ginv(t(Gm) %*% W %*% Gm)
+
+
+Variance_thetafin <- (Mat1 %*% t(Gm) %*% W %*% Varm %*% W %*% Gm %*% Mat1)/nobs
+se_thetafin <- sqrt(diag(Variance_thetafin))
+p_WI <- 2 * pnorm(-abs((thetafin) / se_thetafin)) #
+
+
+
+#Optimal GMM two steps
+W2 <- solve(Varm)
+
+GMM2 <- function(theta){
+  m <- mean_moment(theta)
+  as.numeric(t(m) %*% W2 %*% m)
+}
+
+Estim_2SGMM <- nloptr(
+  x0 = thetafin,
+  eval_f = GMM2,
+  eval_grad_f = NULL,
+  lb = lb0,
+  ub = ub0,
+  opts = list(
+    "algorithm" = "NLOPT_LN_BOBYQA",
+    ftol_rel = 1.e-7, ftol_abs = 1.e-9,
+    xtol_rel = 1.e-7, xtol_abs = 0,
+    maxeval = 100000, "print_level" = 2
+  )
+)
+
+thetafin2 <- Estim_2SGMM$solution
+
+Gm2 <- meandmdtheta(thetafin2)
+Mat2 <- MASS::ginv(t(Gm2) %*% W2 %*% Gm2)
+Variance_thetafin2 <- Mat2/nobs
+se_thetafin2 <- sqrt(diag(Variance_thetafin2))
+p_opt <- 2 * pnorm(-abs((thetafin2) / se_thetafin2))#
+
+
+
+#Summary Table
+out <- cbind(
+  theta.init,
+  thetafin,
+  thetafin2,
+  stderr0,
+  se_thetafin,
+  se_thetafin2,
+  p_OLS_2SLS,
+  p_WI,
+  p_opt
+)
+
+colnames(out) <- c("theta_init", "theta_GMM_WI", "theta_GMM_opt", "se_init(2SLS/OLS)", "se_WI", "se_opt", "p_OLS_2SLS", "p_WI", "p_opt")
+print(out)
+
+```

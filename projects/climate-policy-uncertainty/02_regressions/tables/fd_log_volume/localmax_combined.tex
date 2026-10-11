@@ -1,0 +1,33 @@
+
+\begingroup
+\centering
+\begin{tabular}{lccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{3}{c}{fd\_log\_volume}\\
+                  & Baseline       & Raw VIX        & VIX(t-3) \\   
+   Model:         & (1)            & (2)            & (3)\\  
+   \midrule
+   \emph{Variables}\\
+   rel\_time-1    & 0.1033$^{***}$ & 0.1020$^{***}$ & 0.1030$^{***}$\\   
+                  & (0.0353)       & (0.0347)       & (0.0358)\\   
+   rel\_time0     & 0.0225         & 0.0207         & 0.0216\\   
+                  & (0.0250)       & (0.0247)       & (0.0258)\\   
+   rel\_time1     & 0.0809$^{***}$ & 0.0794$^{***}$ & 0.0803$^{***}$\\   
+                  & (0.0247)       & (0.0248)       & (0.0245)\\   
+   rel\_time2     & 0.0674$^{**}$  & 0.0654$^{**}$  & 0.0675$^{**}$\\   
+                  & (0.0309)       & (0.0296)       & (0.0307)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   company\_name  & Yes            & Yes            & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations   & 1,050          & 1,050          & 1,050\\  
+   R$^2$          & 0.03682        & 0.03691        & 0.03686\\  
+   Within R$^2$   & 0.02557        & 0.02566        & 0.02561\\  
+   \midrule \midrule
+   \multicolumn{4}{l}{\emph{Clustered (company\_name) standard-errors in parentheses}}\\
+   \multicolumn{4}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+

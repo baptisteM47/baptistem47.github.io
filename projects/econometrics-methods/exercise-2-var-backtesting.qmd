@@ -1,0 +1,467 @@
+---
+title: "ECONOMETRICS EXAM"
+format: html
+editor: visual
+---
+
+# EXAM ECONOMETRICS
+
+## EXERCICE 2
+
+## Loading the Data
+
+```{r}
+
+#Change the path just here 
+exchangeM2 <- read_delim("C:/Users/Victoria/Downloads/ExchangeratesforM2.csv", 
+                         delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+```
+
+## Loading the packages
+
+```{r}
+
+pkgs <- c(
+  "nloptr",
+  "tidyverse",
+  "readxl",
+  "stringr",
+  "data.table",
+  "AER",
+  "Matrix",
+  "stargazer",
+  "Rcpp",
+  "kableExtra",
+  "MASS",
+  "dplyr",
+  "Rfast"
+)
+
+to_install <- setdiff(pkgs, rownames(installed.packages()))
+if (length(to_install) > 0) {
+  install.packages(to_install, dependencies = TRUE)
+}
+
+invisible(lapply(pkgs, function(p) {
+  suppressPackageStartupMessages(library(p, character.only = TRUE))
+}))
+
+
+```
+
+### QUESTION 1 :
+
+In this question we choose to use the US/UK exchange rate for the following computations and analysis.
+
+```{r}
+
+bdd <- exchangeM2[-1, 1:4] %>%
+  setNames(c("time", "r_t", "sigma_t", "esp_t")) %>%
+  mutate(across(-time, ~str_replace_all(.x, ",", "."))) %>%   
+  mutate(across(c(r_t, sigma_t, esp_t), as.numeric)) %>%      
+  mutate(e_t = r_t / sqrt(sigma_t))
+
+```
+
+This code allow us to clean the data and ensure to have it in a good format, we also filter the column in order to only keep the variable we decided to work with (the one corresponding to the US/UK exchange rate), finally we compute `e_t = r_t / sqrt(sigma_t)` the residuals corresponding to the (estimated) innovation of the process.
+
+### QUESTION 2 :
+
+The following codes are made to compute the different 3% quantile of the innovation process in order to compute the VaR of each estimate
+
+#### a (HISTORICAL) :
+
+To compute `q_hist` we use the **quantile** function on `e_t` with the specification `probs = 0.03` in order to have the 3% empirical quantile of `e_t`.
+
+```{r}
+
+# 3% historical quantile
+
+q_hist <- quantile(bdd$e_t, probs = 0.03, type = 1)  
+
+cat('The empirical 3% quantile is q_hist =', q_hist)
+
+```
+
+#### b (GAUSSIAN) :
+
+To compute `q_gauss` we use the **qnorm** function on `e_t` with 0.03 to inform the function that we want the 3% quantile, `mean = 0` and `sd = 1` are there in order to say that we use a center reduce normal law to compute the 3% quantile.
+
+```{r}
+
+# Normal distribution 
+
+q_gauss <- qnorm(0.03, mean = 0, sd = 1)
+
+cat('The Gaussian 3% quantile is q_gauss =', q_gauss)
+
+```
+
+#### c (STANDARDIZED STUDENT) :
+
+This chunk estimates the degrees of freedom $\nu$ of a **variance-standardized Student-**$t$ model for the residuals `e_t`, and then uses the fitted model to compute the **3% quantile**.
+
+```{r}
+
+# student standardized
+
+# Approximate gradient of a scalar function using centered finite differences
+fd_grad <- function(fn, par, h = 1e-6) {
+  g <- numeric(length(par))
+  for (j in seq_along(par)) {
+    p1 <- par; p2 <- par
+    p1[j] <- p1[j] + h
+    p2[j] <- p2[j] - h
+    g[j] <- (fn(p1) - fn(p2)) / (2*h)
+  }
+  g
+}
+
+# This function compute the log likelihood of a standardized student law 
+loglik_std_t <- function(nu, e) {
+  if (!is.finite(nu) || nu <= 2) return(-Inf) # we want nu <= 2 to have a finite variance
+  s <- sqrt((nu - 2) / nu)
+  u <- e / s
+  ll <- -log(s) +
+    lgamma((nu + 1)/2) - lgamma(nu/2) - 0.5*log(nu*pi) -
+    ((nu + 1)/2) * log(1 + (u^2)/nu)
+  sum(ll)
+}
+
+# Minimizing the log likelihood 
+negll_student <- function(par) {
+  nu <- par[1]
+  -loglik_std_t(nu, bdd$e_t)
+}
+
+
+# Optimizing with the nloptr function to find nu 
+opt_student <- nloptr(
+  x0 = c(10),
+  eval_f = function(x) list(objective = negll_student(x),
+  gradient = fd_grad(negll_student, x)),
+  lb = c(2.01), 
+  ub = c(200),
+  opts = list(algorithm = "NLOPT_LD_LBFGS", xtol_rel = 1e-10, maxeval = 5000))
+
+# Results 
+nu_hat <- opt_student$solution[1]
+s_hat  <- sqrt((nu_hat - 2) / nu_hat)
+q_student <- s_hat * qt(0.03, df = nu_hat)
+
+cat('The Standardized Student 3% quantile is q_student =', q_student)
+
+
+```
+
+#### d (EXTREME VALUE APPROACH) :
+
+This chunk computes a **3% left-tail quantile** using an **Extreme Value Theory (EVT)** approach
+
+```{r}
+
+# Extreme value approach
+
+alpha <- 0.03
+T <- 1.5
+eps <- bdd$e_t
+
+# Indices of tail observations (left tail beyond -T)
+idx <- which(eps < -T)
+t_star <- length(idx)      # number of exceedances
+t_tot  <- length(eps)
+k_T <- t_star / t_tot      # empirical exceedance probability P(z > T)
+
+# Transform left-tail exceedances into positive exceedances and shift by threshold
+z <- -eps[idx]   
+y <- z - T    
+
+gpd_nll_grad <- function(par) {
+  theta <- par[1]        
+  xi <- par[2]
+  beta <- exp(theta)
+  n <- length(y)
+  
+  tvec <- 1 + xi * y / beta
+  if (!is.finite(beta) || beta <= 0 || !is.finite(xi) || any(tvec <= 0)) {
+    return(list(objective = 1e12, gradient = c(0, 0)))
+  }
+
+  if (abs(xi) < 1e-8) {
+    nll <- n * log(beta) + sum(y) / beta
+    grad_theta <- n - sum(y) / beta
+    grad_xi <- 0
+    return(list(objective = nll, gradient = c(grad_theta, grad_xi)))
+  }
+
+  Slog <- sum(log(tvec))
+  Sy <- sum(y / tvec)
+  nll <- n * log(beta) + (1/xi + 1) * Slog
+  grad_theta <- n - ((1 + xi) / beta) * Sy
+  grad_xi <- -(1/xi^2) * Slog + (1/xi + 1) * (1/beta) * Sy
+  list(objective = nll, gradient = c(grad_theta, grad_xi))
+}
+
+x0 <- c(log(sd(y) + 1e-6), 0.1)
+
+opt <- nloptr(
+  x0 = x0,
+  eval_f = gpd_nll_grad,
+  lb = c(log(1e-8), -1),
+  ub = c(log(1e4),   1),
+  opts = list(
+    algorithm = "NLOPT_LD_LBFGS",
+    xtol_rel  = 1e-10,
+    maxeval   = 8000
+  )
+)
+
+beta_hat <- exp(opt$solution[1])
+xi_hat   <- opt$solution[2]
+
+if (abs(xi_hat) < 1e-8) {
+  z_alpha <- T + beta_hat * log(k_T / alpha)
+} else {
+  z_alpha <- T + (beta_hat / xi_hat) * ((k_T / alpha)^xi_hat - 1)
+}
+
+q_evt <- -z_alpha
+
+cat("EVT (GPD) MLE:\n")
+cat("  T =", T, "  seuil = -", T, "\n", sep="")
+cat("  t* =", t_star, "  k_T =", k_T, "\n")
+cat("  beta_hat =", beta_hat, "\n")
+cat("  xi_hat   =", xi_hat, "\n")
+cat("  1/xi_hat =",ifelse(abs(xi_hat) < 1e-12, Inf, 1/xi_hat), "\n\n")
+cat('The Extreme value approach 3% quantile is q_evt =', q_evt)
+
+
+```
+
+#### e Historical quantile on the returns
+
+Here we have computed the 3% quantile of `r_t` to have the **Historical VaR on the returns** as before we use the `quantile` function with the specification `probs = 0.03` to have the 3% quantile.
+
+```{r}
+
+# historical VaR directly on returns r_t
+
+q_hist_r <- as.numeric(quantile(bdd$r_t, probs = 0.03, type = 1, na.rm = TRUE))
+
+cat('The Historical quantile on the returns 3% quantile is q_hist_r =', q_hist_r)
+
+```
+
+#### VaR computation :
+
+Using the formula provided at the begining of the exercise : $$\mathrm{VaR}_{0.03,t} = \sigma_t\, q_{0.03}.$$ we compute the VaR of all the 5 estimated quantiles we have found before.
+
+```{r}
+
+vol_t <- sqrt(bdd$sigma_t)
+
+VaR_hist <- vol_t * q_hist
+VaR_gauss <- vol_t * q_gauss
+VaR_student <- vol_t * q_student
+VaR_evt <- vol_t * q_evt
+VaR_hist_r <- rep(q_hist_r, length(bdd$r_t))
+
+```
+
+### QUESTION 3 :
+
+#### Results table :
+
+In this table we have all the VaR results with their affiliated `r_t`, `e_t`, `sigma_t` over time.
+
+```{r}
+table_Q3 <- bdd %>%
+  transmute(
+    time,
+    r_t,
+    sigma_t,
+    e_t,
+    VaR_hist = VaR_hist,
+    VaR_gauss = VaR_gauss,
+    VaR_student = VaR_student,
+    VaR_evt = VaR_evt,
+    VaR_hist_r = VaR_hist_r
+  )
+
+print(head(table_Q3, 10))
+
+```
+
+#### Mean VaR :
+
+Since we believe it was not interesting to compare the VaR in at a specific date t we compute the mean of all the 5 VaR to compare them.
+
+```{r}
+
+mean_VaR_hist <- mean(table_Q3$VaR_hist)
+mean_VaR_gauss <- mean(table_Q3$VaR_gauss) 
+mean_VaR_student <- mean(table_Q3$VaR_student)
+mean_VaR_evt <- mean(table_Q3$VaR_evt)
+mean_VaR_hist_r <- mean(table_Q3$VaR_hist_r)
+
+mean_VaR_table <- tibble(
+  VaR = c("Hist", "Gauss", "Student", "EVT", "Hist_r"),
+  Mean = c(mean_VaR_hist, mean_VaR_gauss, mean_VaR_student, mean_VaR_evt, mean_VaR_hist_r)
+)
+
+mean_VaR_table
+
+```
+
+### QUESTION 4 :
+
+#### VaR plot
+
+Before starting the Question 4 we think that it would be interesting to see how many time the VaR was violated in each model (the number of times r_t was below the VaR), to do so we have ploted each `VaR` with `r_t` and also we have put a red dot for each violation.
+
+```{r}
+
+VaR_cols <- c("VaR_hist", "VaR_gauss", "VaR_student", "VaR_evt", "VaR_hist_r")
+
+plot_var_model <- function(table_Q3, var_col, r_col = "r_t", time_col = "Time") {
+  r   <- table_Q3[[r_col]]
+  VaR <- table_Q3[[var_col]]
+  t   <- if (time_col %in% names(table_Q3)) table_Q3[[time_col]] else seq_along(r)
+
+  ok <- is.finite(r) & is.finite(VaR) & is.finite(t)
+  r <- r[ok]; VaR <- VaR[ok]; t <- t[ok]
+
+  hit <- (r <= VaR)
+
+  y_min <- min(r, VaR, na.rm = TRUE)
+  y_max <- max(r, VaR, na.rm = TRUE)
+
+  plot(t, r, type = "l", col = "black", lwd = 1,
+       xlab = "t", ylab = "", ylim = c(y_min, y_max),
+       main = paste("VaR and r_t representation with the violations"))
+
+  lines(t, VaR, col = "blue", lwd = 2)
+  points(t[hit], r[hit], col = "red", pch = 16, cex = 0.7)
+
+  legend("topleft",
+         legend = c("r_t", var_col, "violations (r_t <= VaR)"),
+         col = c("black", "blue", "red"),
+         lty = c(1, 1, NA),
+         pch = c(NA, NA, 16),
+         bty = "n")
+}
+
+for (vn in VaR_cols) {
+  plot_var_model(table_Q3, vn, r_col = "r_t", time_col = "Time")
+}
+
+
+```
+
+#### Coverage test :
+
+This chunk implement the christoffersen coverage test following the methodology of the document **Chapter 8** in moodle.
+
+```{r}
+
+# Christoffersen (1998) backtests for VaR:
+# - LRuc: unconditional coverage (hit rate equals p)
+# - LRind: independence of hits (no clustering), via 2-state Markov vs i.i.d. Bernoulli
+# - LRcc: conditional coverage = LRuc + LRind
+
+christoffersen_tests <- function(r, VaR, p = 0.03) {
+  stopifnot(length(r) == length(VaR))
+
+  # Hit sequence : I_t = 1 if return breaches VaR, else 0
+  T <- length(r)
+  I <- as.integer(r <= VaR)
+
+  # Unconditional hit rate estimate
+  T1 <- sum(I); T0 <- T - T1
+  pi_hat <- T1 / T
+
+  # Safe log-likelihood contribution : count * log(prob), with count=0 -> 0
+  term <- function(count, prob) {
+    if (count == 0) return(0)
+    count * log(prob)
+  }
+
+  ## ===== LRuc: Unconditional Coverage =====
+  # Compare likelihood under fixed p vs estimated pi_hat
+  lnL_p  <- term(T0, 1 - p) + term(T1, p)
+  lnL_pi <- term(T0, 1 - pi_hat) + term(T1, pi_hat)
+  LRuc <- -2 * (lnL_p - lnL_pi)
+  p_uc <- 1 - pchisq(LRuc, df = 1)
+
+  ## ===== LRind: Independence =====
+  # Build 2x2 transition counts for Markov(1) hits : T_ij = #{I_{t-1}=i, I_t=j}
+  I_lag <- I[-T]
+  I_now <- I[-1]
+  T00 <- sum(I_lag == 0 & I_now == 0)
+  T01 <- sum(I_lag == 0 & I_now == 1)
+  T10 <- sum(I_lag == 1 & I_now == 0)
+  T11 <- sum(I_lag == 1 & I_now == 1)
+
+  # Conditional hit probabilities under Markov alternative
+  denom0 <- T00 + T01
+  denom1 <- T10 + T11
+  pi01_hat <- if (denom0 > 0) T01 / denom0 else 0
+  pi11_hat <- if (denom1 > 0) T11 / denom1 else 0
+
+  # Likelihood under independence (i.i.d Bernoulli) should use the MLE based on transitions (T-1 obs)
+  # pi_hat_ind = P(I_t=1) estimated from I_now
+  # (Recommended: use pi_hat_ind = (T01 + T11) / (T - 1))
+  lnL_ind  <- term(T00 + T10, 1 - pi_hat) + term(T01 + T11, pi_hat)
+
+  # Likelihood under Markov(1) alternative
+  lnL_mark <- term(T00, 1 - pi01_hat) + term(T01, pi01_hat) +
+              term(T10, 1 - pi11_hat) + term(T11, pi11_hat)
+
+  LRind <- -2 * (lnL_ind - lnL_mark)
+  p_ind <- 1 - pchisq(LRind, df = 1)
+
+  ## ===== LRcc: Conditional Coverage =====
+  LRcc <- LRuc + LRind
+  p_cc <- 1 - pchisq(LRcc, df = 2)
+
+  list(
+    n = T,
+    hit_rate = pi_hat,
+    counts = c(T00 = T00, T01 = T01, T10 = T10, T11 = T11),
+    LRuc = LRuc, p_uc = p_uc,
+    LRind = LRind, p_ind = p_ind,
+    LRcc = LRcc, p_cc = p_cc
+  )
+}
+
+
+```
+
+#### Results Table
+
+This table summarize all the results of the question 4 results it include all the tests with their associated p-values.
+
+```{r}
+VaR_cols <- c("VaR_hist", "VaR_gauss", "VaR_student", "VaR_evt", "VaR_hist_r")
+
+r <- table_Q3$r_t 
+
+results_table <- do.call(rbind, lapply(VaR_cols, function(vn) {
+  res <- christoffersen_tests(r, table_Q3[[vn]], p = 0.03)
+  data.frame(
+    model = vn,
+    hit_rate = round(res$hit_rate,4),
+    LRuc = round(res$LRuc,4),
+    p_uc = round(res$p_uc,4),
+    LRind = round(res$LRind,4),
+    p_ind = round(res$p_ind,4),
+    LRcc = round(res$LRcc,4), 
+    p_cc = round(res$p_cc,4),
+    row.names = NULL
+  )
+}))
+
+results_table
+
+```

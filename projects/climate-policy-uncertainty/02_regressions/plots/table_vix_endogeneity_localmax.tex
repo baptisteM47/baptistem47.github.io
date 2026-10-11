@@ -1,0 +1,33 @@
+
+\begingroup
+\centering
+\begin{tabular}{lccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{3}{c}{realized\_vol}\\
+                  & Baseline        & Raw VIX       & VIX(-3) \\   
+   Model:         & (1)             & (2)           & (3)\\  
+   \midrule
+   \emph{Variables}\\
+   rel\_time-1    & 0.0019          & 0.0079$^{**}$ & 0.0008\\   
+                  & (0.0028)        & (0.0031)      & (0.0032)\\   
+   rel\_time0     & -0.0109$^{***}$ & -0.0028       & -0.0131$^{***}$\\   
+                  & (0.0023)        & (0.0024)      & (0.0026)\\   
+   rel\_time1     & -0.0037$^{***}$ & 0.0031$^{**}$ & -0.0121$^{***}$\\   
+                  & (0.0013)        & (0.0014)      & (0.0018)\\   
+   rel\_time2     & -0.0083$^{***}$ & 0.0004        & -0.0133$^{***}$\\   
+                  & (0.0025)        & (0.0024)      & (0.0030)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   company\_name  & Yes             & Yes           & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations   & 1,050           & 1,050         & 960\\  
+   R$^2$          & 0.28656         & 0.39681       & 0.34318\\  
+   Within R$^2$   & 0.03597         & 0.18494       & 0.10853\\  
+   \midrule \midrule
+   \multicolumn{4}{l}{\emph{Clustered (company\_name) standard-errors in parentheses}}\\
+   \multicolumn{4}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+

@@ -1,0 +1,33 @@
+
+\begingroup
+\centering
+\begin{tabular}{lccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{3}{c}{ar\_returns}\\
+                  & Baseline        & Raw VIX         & VIX(t-3) \\   
+   Model:         & (1)             & (2)             & (3)\\  
+   \midrule
+   \emph{Variables}\\
+   rel\_time-1    & 0.0323$^{***}$  & 0.0328$^{***}$  & 0.0323$^{***}$\\   
+                  & (0.0080)        & (0.0091)        & (0.0079)\\   
+   rel\_time0     & -0.0289$^{***}$ & -0.0283$^{***}$ & -0.0288$^{***}$\\   
+                  & (0.0073)        & (0.0087)        & (0.0073)\\   
+   rel\_time1     & -0.0040         & -0.0035         & -0.0040\\   
+                  & (0.0063)        & (0.0069)        & (0.0067)\\   
+   rel\_time2     & -0.0114$^{*}$   & -0.0108         & -0.0114$^{*}$\\   
+                  & (0.0065)        & (0.0076)        & (0.0065)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   company\_name  & Yes             & Yes             & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations   & 750             & 750             & 750\\  
+   R$^2$          & 0.12350         & 0.12355         & 0.12350\\  
+   Within R$^2$   & 0.07523         & 0.07528         & 0.07523\\  
+   \midrule \midrule
+   \multicolumn{4}{l}{\emph{Clustered (company\_name) standard-errors in parentheses}}\\
+   \multicolumn{4}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+

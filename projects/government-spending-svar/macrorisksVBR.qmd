@@ -1,0 +1,934 @@
+---
+title: "The Effects of Government Spending Shocks on
+Macroeconomic Activity: A SVAR Analysis"
+author: "Victoria Godio, Baptiste Messant & Raphael Perilhou"
+format: 
+  html:
+    code-fold: true
+    code-summary: "Show code"
+    toc: true
+editor: visual
+bibliography: references_macro.bib
+csl: apa.csl 
+---
+
+# Initialisation
+
+```{r}
+#| message: false
+library(tidyverse)
+library(readxl)
+library(stargazer)
+library(lubridate)
+library(urca)
+library(vars)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(patchwork)
+library(purrr)
+
+rm(list=ls())
+setwd("/Users/baptiste/Desktop/Master_2/Semester 1/Macroeconomics of risk")
+```
+
+# 2 Data
+
+## 2 Data Description and Construction
+
+### 2.1 Variables
+
+We use quarterly U.S. macroeconomic data from the Ramey–Shapiro fiscal dataset, complemented with the Economic Policy Uncertainty (EPU) Index by Baker, Bloom, and Davis.
+
+The baseline VAR includes the following variables:
+
+-   Real Government Spending
+-   Real GDP
+-   Real Consumption (nondurables + services)
+-   Economic Policy Uncertainty (EPU) Index
+
+Consumption is constructed by aggregating nondurable goods and services. Durable goods are excluded, as they are classified as investment rather than consumption.
+
+Nominal consumption is therefore defined as:
+
+CNDSV_t = NCDUR_t + NCSV_t
+
+The dataset also contains additional macroeconomic aggregates (investment, prices, labor market variables, interest rates), which are not used in the baseline specification but remain available for robustness checks.
+
+------------------------------------------------------------------------
+
+### 2.2 Data Import and Inspection
+
+```{r}
+#Monthly EPU data
+
+EPU <- read_excel("data/US_Policy_Uncertainty_Data.xlsx")
+
+#Quarterly macroeconomic data (Ramey-type dataset)
+
+govdata <- read_excel("data/homgovdat.xlsx", sheet = 2)
+
+head(EPU)
+colnames(govdata)
+
+
+#The macroeconomic dataset includes nominal quantities and price deflators for GDP, consumption components, government spending, and other aggregates.
+```
+
+### 2.3 Construction of Real Variables
+
+Nominal variables are converted to real terms using their corresponding deflators, following standard practice in the fiscal VAR literature.
+
+We construct:
+
+Real GDP using the GDP deflator
+
+Real Consumption as nondurables + services deflated by the corresponding consumption deflator
+
+Real Government Spending using the government purchases deflator
+
+```{r}
+govdata <- govdata %>%
+  mutate(
+  # Nominal consumption (nondurables + services)
+  ncons_ndsv = ncnd + ncsv,
+  # Real variables
+  rgdp  = ngdp / pgdp,
+  rcons = ncons_ndsv / pcndsv,
+  rgov  = ngov / pgov
+  )
+```
+
+### 2.4 Log Transformation
+
+All real variables are transformed into natural logarithms:
+
+```{r}
+govdata <- govdata %>%
+mutate(
+l_rgdp = log(rgdp),
+l_rcons = log(rcons),
+l_rgov = log(rgov)
+)
+```
+
+## 2.5 Detrending
+
+To obtain interpretable IRFs and FEVDs, the VAR must be stationary.
+
+Thus, we follow @blanchard2002empirical , and address the potential non-stationarity of the macroeconomic series by considering two alternative representations. In the **deterministic trend (DT)** specification, we assume that each variable contains a linear deterministic trend but no stochastic trend. Formally, for a variable $Y_t$, we estimate
+
+```{=tex}
+\begin{align}
+Y_t = \alpha + \beta t + u_t
+\end{align}
+```
+and take the residuals $u_t$ as the detrended, stationary series to be used in the SVAR. In the **stochastic trend (ST)** specification, we assume that the variable contains a stochastic trend (unit root), and we transform it by taking first differences,
+
+```{=tex}
+\begin{align}
+\Delta Y_t = Y_t - Y_{t-1}
+\end{align}
+```
+so that the resulting series are stationary. Following BP, we first inspect the data visually and then perform formal unit-root test (Augmented Dickey–Fuller deterministic trend) to assess whether the series are better characterized as trend-stationary or difference-stationary in our sample period.
+
+### Visual inspection
+
+```{r}
+# 1. GDP
+ggplot(govdata, aes(x = quarter, y = l_rgdp)) +
+  geom_line(size = 0.8, color = "steelblue") +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "black") +
+  labs(
+    title = "Log GDP over Time",
+    x = "Quarter",
+    y = "Log GDP",
+    caption = "Dashed line: linear trend"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid.major = element_line(color = "gray90"))
+
+# 2. Consumption
+ggplot(govdata, aes(x = quarter, y = l_rcons)) +
+  geom_line(size = 0.8, color = "darkgreen") +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "black") +
+  labs(
+    title = "Log Consumption over Time",
+    x = "Quarter",
+    y = "Log Consumption",
+    caption = "Dashed line: linear trend"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid.major = element_line(color = "gray90"))
+
+# 3. Government Spending
+ggplot(govdata, aes(x = quarter, y = l_rgov)) +
+  geom_line(size = 0.8, color = "orange") +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "black") +
+  labs(
+    title = "Log Government Spending over Time",
+    x = "Quarter",
+    y = "Log Government Spending",
+    caption = "Dashed line: linear trend"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid.major = element_line(color = "gray90"))
+
+```
+
+For the GDP and consumption series, we observe a clear upward trend over time, suggesting the presence of a deterministic trend component. The government spending series also exhibits an upward trend, although it appears to be more volatile. However, we cannot rule out the presence of a deterministic trend in this case as well. Hence, it motivates us to use a formal test, the Augmented-Dickey-Fuller Unit Root test. An important element, also raised by @blanchard2002empirical
+
+### Formal Unit Root Tests
+
+```{r}
+
+#ADF tests with intercept and linear trend
+adf_rgdp <- ur.df(govdata$l_rgdp,
+                  type = "trend",
+                  selectlags = "AIC")
+
+adf_rcons <- ur.df(govdata$l_rcons,
+                   type = "trend",
+                   selectlags = "AIC")
+
+adf_rgov <- ur.df(govdata$l_rgov,
+                  type = "trend",
+                  selectlags = "AIC")
+
+#Extract test statistics (tau3 corresponds to the unit root test with trend)
+summary_adf <- data.frame(
+  Variable = c("Real GDP (log)", "Real Consumption (log)", "Real Government Spending (log)"),
+  ADF_Statistic = c(adf_rgdp@teststat[,"tau3"],
+                    adf_rcons@teststat[,"tau3"],
+                    adf_rgov@teststat[,"tau3"]),
+  Critical_Value_5pct = c(adf_rgdp@cval["tau3", "5pct"],
+                          adf_rcons@cval["tau3", "5pct"],
+                          adf_rgov@cval["tau3", "5pct"])
+)
+
+stargazer(summary_adf,
+          type = "text",
+          summary = FALSE,
+          digits = 3,
+          rownames = FALSE,
+          title = "ADF Unit Root Tests on Log-Level Series (with Linear Trend)")
+```
+
+(source for interpretation of ur.df: https://stats.stackexchange.com/questions/24072/interpreting-rs-ur-df-dickey-fuller-unit-root-test-results)
+
+Table X reports the ADF test statistics (for linear trend).
+
+We cannot reject the null hypothesis of a unit root for Real GDP and Real Consumption. In contrast, the null is rejected for Real Government Spending, though not strongly.
+
+Hence, Real GDP and Real Consumption are likely $I(1)$ and Real Government Spending is likely trend-stationary.
+
+#### Johansen Cointegration Test
+
+Given that real GDP and real consumption are both $I(1)$, it is possible that they share a common long-run relationship. We therefore perform a Johansen cointegration test using the levels of these two variables.
+
+```{r}
+Y <- govdata %>%
+dplyr::select(l_rgdp, l_rcons)
+
+johansen_test <- ca.jo(Y, type = "trace", ecdet = "const", K = 2)
+
+#For the results
+johansen_table <- data.frame(
+  Rank = c("r = 0"),
+  Trace_Statistic = c(johansen_test@teststat[2]),
+  Critical_Value_5pct = johansen_test@cval[2,"5pct"]
+)
+
+summary(johansen_test)
+
+stargazer(johansen_table, type = "text", summary = F, rownames = F, title = "Johansen Cointegration Test Results"
+)
+```
+
+For the null hypothesis r = 0, the trace statistic (129.741) exceeds the 5% critical value (19.960). There is a very strong rejection. This result indicates the presence of at least one cointegrating relationship between real GDP and real consumption. Since, we have only 2 variables in our test, the cointegration relationship is between Real GDP and Real Consumption. This finding is consistent with standard macroeconomic theory, which predicts that consumption and income move together in the long run.
+
+Although a cointegrating relationship exists, we choose not to estimate a VECM as it is above our level. However, as @engle1987co highlight, a VAR is first-difference is misspecified in presence of cointegration. Hence, we pursue with the deterministic trend specification using quadratic detrending as suggested by @blanchard2002empirical to ensure stationarity of all variables.
+
+```{r}
+#We create our quadratic detrended variables
+govdata <- govdata %>%
+mutate(
+time = 1:n(),
+rgdp_dt_quad = resid(lm(l_rgdp ~ time + I(time^2), data = govdata)),
+rcons_dt_quad = resid(lm(l_rcons ~ time + I(time^2), data = govdata)),
+rgov_dt_quad = resid(lm(l_rgov ~ time + I(time^2), data = govdata))
+)
+#ADF tests with intercept and quadratic trend
+adf_rgdp_quad <- ur.df(govdata$rgdp_dt_quad,
+                  type = "drift",
+                  selectlags = "AIC")
+adf_rcons_quad <- ur.df(govdata$rcons_dt_quad,
+                   type = "drift",
+                   selectlags = "AIC")
+adf_rgov_quad <- ur.df(govdata$rgov_dt_quad,
+                  type = "drift",
+                  selectlags = "AIC")
+
+#Extract test statistics (tau2)
+summary_adf_quad <- data.frame(
+  Variable = c("Real GDP (log)", "Real Consumption (log)", "Real Government Spending (log)"),
+  ADF_Statistic = c(adf_rgdp_quad@teststat[,"tau2"],
+                    adf_rcons_quad@teststat[,"tau2"],
+                    adf_rgov_quad@teststat[,"tau2"]),
+  Critical_Value_5pct = c(adf_rgdp_quad@cval["tau2", "5pct"],
+                          adf_rcons_quad@cval["tau2", "5pct"],
+                          adf_rgov_quad@cval["tau2", "5pct"]),
+  Critical_Value_10pct = c(adf_rgdp_quad@cval["tau2", "10pct"],
+                           adf_rcons_quad@cval["tau2", "10pct"],
+                           adf_rgov_quad@cval["tau2", "10pct"])
+)
+stargazer(summary_adf_quad,
+          type = "text",
+          summary = FALSE,
+          digits = 3,
+          rownames = FALSE,
+          title = "ADF Unit Root Tests on Quadratic Detrended Series (with Drift)")
+```
+
+In table Z, we see that Real GDP and Real Government Spending are stationary at the 5% level when detrended with a quadratic trend. Real Consumption is stationary at the 10% level but close to 5% level. Hence, we conclude it is acceptable enough to proceed with the deterministic trend specification using quadratic detrending. Rather than using a first difference when there is a cointegration relation. We complete with a visual inspection of the quadratic detrended series.
+
+```{r}
+#| message: false
+#| warning: false
+
+#We get our varibale in first difference
+#govdata <- govdata %>%
+#mutate(
+#rgdp_st = c(NA, diff(l_rgdp)),
+#rcons_st = c(NA, diff(l_rcons)),
+#rgov_st = c(NA, diff(l_rgov))
+#)
+
+#Plot the ST series
+# 1. GDP
+ggplot(govdata, aes(x = quarter, y = rgdp_dt_quad)) +
+  geom_line(size = 0.8, color = "steelblue") +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "black") +
+  labs(
+    title = "Log GDP over Time",
+    x = "Quarter",
+    y = "Log GDP",
+    caption = "Dashed line: linear trend"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid.major = element_line(color = "gray90"))
+
+# 2. Consumption
+ggplot(govdata, aes(x = quarter, y = rcons_dt_quad)) +
+  geom_line(size = 0.8, color = "darkgreen") +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "black") +
+  labs(
+    title = "Log Consumption over Time",
+    x = "Quarter",
+    y = "Log Consumption",
+    caption = "Dashed line: linear trend"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid.major = element_line(color = "gray90"))
+
+# 3. Government Spending
+ggplot(govdata, aes(x = quarter, y = rgov_dt_quad)) +
+  geom_line(size = 0.8, color = "orange") +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "black") +
+  labs(
+    title = "Log Government Spending over Time",
+    x = "Quarter",
+    y = "Log Government Spending",
+    caption = "Dashed line: linear trend"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid.major = element_line(color = "gray90"))
+
+```
+
+We see a clear improvement in stationarity compared to the log-level series.
+
+### 2.5 Quarterly Aggregation of the EPU Index
+
+The EPU index is available at monthly frequency and must be aggregated to quarters to match the macroeconomic data.
+
+We first construct a date variable and corresponding quarter identifier, then compute quarterly averages.
+
+```{r}
+#| warning: false
+EPU_q <- EPU %>%
+mutate(
+date = ymd(paste(Year, Month, "01")),
+quarter = year(date) + (quarter(date) - 1) / 4
+) %>%
+group_by(quarter) %>%
+summarise(epu = mean(News_Based_Policy_Uncert_Index, na.rm = TRUE))
+```
+
+Finally, we merge the quarterly EPU series with the macroeconomic dataset. But first we demean EPU so all our variables have zero mean.
+
+```{r}
+EPU_q <- EPU_q %>%
+mutate(epu_dm = epu - mean(epu, na.rm = TRUE))
+
+data_var <- govdata %>%
+dplyr::select(quarter, rgdp_dt_quad, rcons_dt_quad, rgov_dt_quad) %>%
+left_join(EPU_q, by = "quarter")
+```
+
+This merged dataset forms the basis for the VAR analysis conducted in the next section.
+
+Now we plot time series of all the variables (standardised).
+
+```{r}
+#| warning: false
+#We rescale epu
+
+
+data_long <- data_var %>%
+  dplyr::select(quarter, rgdp_dt_quad, rcons_dt_quad, rgov_dt_quad, epu) %>%
+  pivot_longer(cols = -quarter,
+               names_to = "variable",
+               values_to = "value") %>%
+  group_by(variable) %>%
+  mutate(value_std = scale(value)) %>%
+  ungroup()
+
+ggplot(data_long, aes(x = quarter, y = value_std, color = variable)) +
+  geom_line() +
+  labs(
+    title = "Macroeconomic Variables and EPU (Standardised)",
+    x = "Quarter",
+    y = "Standardized Units (z-scores)"
+  ) +
+  theme_minimal()
+
+```
+
+Here we clearly see that consumption and GDP comove quite closely, while government spending appears more volatile and less correlated with the other two variables. The EPU index also shows distinct dynamics, with spikes that do not always align with movements in the macroeconomic aggregates.
+
+# 3 VAR specification and identification
+
+As we will assume the government spending does not react contemporaneously to the economic variables, we already order our variables as follows: Government spending, GDP, consuption, EPU.
+
+## 3.1 Unrestricted Model
+
+Our Basic VAR representation: \begin{align}
+Y_t = A_0 + \sum_{i=1}^{p} A_i Y_{t-i} + u_t
+\end{align}
+
+Where $Y_t \equiv [G_t, Y_t, C_t, EPU_t]'$ is a four-dimensional vector in the logarithms (except for EPU) of our quarterly variables at time t. $A_i$ are the coefficient matrices for each lag i, p is the number of lags and $u_t \equiv [g_t, y_t, c_t, epu_t]'$ is the corresponding vector of reduced-form residuals.
+
+```{r}
+Yt <- data_var %>%
+  dplyr::select(-quarter) 
+Yt <- na.omit(Yt) # to be sure we have no NA left in the vector 
+Yt <- Yt[,c("rgov_dt_quad", "rgdp_dt_quad", "rcons_dt_quad", "epu_dm")]
+
+```
+
+## 3.2 Lag selection
+
+We run unrestricted VARs for different lag and get our information criteria.
+
+```{r}
+#| message: false
+#| warning: false
+
+# lag.max give us the maximum tolerated lag 
+# type = "const" stand to have a constant intercept, since we work with real variables over time we should have put type = "trend" but because we have detrended our real variables we must put a constant intercept.
+
+lag_selection <- VARselect(Yt, lag.max = 8, type = "const")
+lag_selection$selection #SC = BIC
+```
+
+The lag selection criteria suggest using 3 lags based on AIC, while BIC suggests 2 lag. We follow the fiscal VAR literature and use four lags @blanchard2002empirical. If time allow it, we will compare with results obtain using only 2 lag as BIC recommend.
+
+## 3.3 Estimate the reduced form VAR with chosen lag
+
+```{r}
+var_rf <- VAR(Yt, p = 4, type = "const")
+covres <- cov(residuals(var_rf))
+corres <- cov2cor(covres)
+stargazer(covres, type = "text", summary = F, rownames = TRUE, title = "Covariance Matrix of Reduced-Form VAR Residuals")
+stargazer(corres, type = "text", summary = F, rownames = TRUE, title = "Correlation Matrix of Reduced-Form VAR Residuals")
+
+
+```
+
+The reduced-form VAR residuals are contemporaneously correlated. Recall, structural shocks must be mutually orthogonal, so we can identify the unique causal effect of an exogenous shock relative to another. Thus the innovations cannot be interpreted with economic meaning.
+
+## 3.3 Identification scheme
+
+To recover economically meaningful disturbances, we impose short-run identifying restrictions through a recursive (Cholesky) decomposition.
+
+First, we assume the reduced-form innovations are linear combinations of structural shocks: \begin{align}
+u_t = S \varepsilon_t
+\end{align}
+
+Where: - $\varepsilon_t$ is an $n \times 1$ vector of structural shocks. - $\mathbb{E}(\varepsilon_t) = 0$ - $\mathbb{E}(\varepsilon_t\varepsilon_t')= I_n$ - S is an $n \times n$ matrix of contemporaneous coefficients mapping structural shocks to reduced-form innovations.
+
+Hence we get by construction:
+
+```{=tex}
+\begin{align}
+\Sigma_u = \mathbb{E}(u_t u_t') = S \mathbb{E}(\varepsilon_t \varepsilon_t') S' = S S'
+\end{align}
+```
+Now, our identification assumption is based on the timing of fiscal policy decisions. As @blanchard2002empirical suggest: "lags in fiscal policy imply that, at high enough frequency— say, within a quarter, there is little or no discretionary response of fiscal policy to unexpected movements in activity. ". Hence, we assume that government spending does not respond contemporaneously (within the quarter) to other macroeconomic variables.
+
+That is, we impose short-run restrictions on S making it a lower-triangular matrix. It implies the latter is lower triangular and therefore, variables ordered earlier do not respond contemporaneously to shocks in variables ordered later.
+
+HERE WE NEED TO ALSO JUSTIFY THE REST OF THE ORDERING, WHY CONSUMPTION AFTER GDP FOR INSTANCE.
+
+We recover S through the Cholesky decomposition of $\Sigma_u$ (covres object).
+
+```{r}
+sigma_u <- covres
+S_matrix <- t(chol(sigma_u)) #We use the transpose because the chol function in R
+#return the upper triangular matrix.
+S_matrix
+```
+
+Now, to recover our structual shocks: \begin{align}
+u_t &= S \varepsilon_t 
+\varepsilon_t &= S^{-1} u_t
+\end{align}
+
+```{r}
+u_t <- residuals(var_rf)
+eps_t <- t(solve(S_matrix, t(u_t)))
+```
+
+We check that the structural shocks are orthogonal:
+
+```{r}
+stargazer(round(cov(eps_t),10), summary = F, type = "text", style = "jpam", title = "Covariance Matrix of Structural Shocks")
+```
+
+-   Interpretation of shocks: Under this assumption, we interret the first VAR innovation as an unanticipated government spending shock.
+
+##3.4 Impulse Response Functions (IRFs)
+
+We write the MA representation of the VAR to compute the IRFs: \begin{align}
+Y_t = B(L)S\varepsilon_t \equiv C(L)\varepsilon_t
+\end{align}
+
+Now we want to get the IRF and the confidence intervals
+
+LIMITATION However, if agents anticipate future fiscal actions (fiscal foresight), the reduced-form VAR innovations may fail to correspond to the true structural shocks, rendering the model non-invertible with respect to the econometrician’s information set. In this case, the estimated impulse responses should be interpreted with caution.
+
+Also, we have to be careful of luca's critique: We should interpret the results as descriptive of past dynamics rather than as predictions under alternative policy regimes.
+
+### VAR
+
+All our variables are zero mean, also we detrended them, so we do not need to add a constant or trend in our VAR. Except maybe for EPU the trend could be needed but we visually see it does not really have one.
+
+```{r}
+
+var_model <- VAR(Yt, p = 4, type = "none")
+#Extract eigenvalues
+var_roots <- roots(var_model)
+
+#Check maximum modulus
+max_mod <- max(Mod(var_roots))
+cat("The max modulus is:", round(max_mod, 3))
+```
+
+We see the max modulus is less than 1, so our VAR is stable and we can compute IRF.
+
+### IRF
+
+```{r}
+
+IRF_model_68 <- irf(var_model,
+          impulse = "rgov_dt_quad", 
+          response = c("rgov_dt_quad", "rgdp_dt_quad", "rcons_dt_quad", "epu_dm"),
+          n.ahead = 24,
+          boot = TRUE,
+          ci = 0.68,
+          ortho = TRUE,
+          runs = 2000)
+
+IRF_model_90 <- irf(var_model,
+          impulse = "rgov_dt_quad", 
+          response = c("rgov_dt_quad", "rgdp_dt_quad", "rcons_dt_quad", "epu_dm"),
+          n.ahead = 24,
+          boot = TRUE,
+          ci = 0.9,
+          ortho = TRUE,
+          runs = 2000)
+
+# var_model is the VAR we have constructed before with the associated lag p 
+# impulse is the variable who face the shock 
+# response are the variables reacting to the shock 
+# n.ahead correspond to the number of period after the shock happen, since we have quarterly data n.ahead = 24 (6 years)
+# boot = TRUE correspond to the computation method of the confidence intervals boot stands for the bootstraps method 
+# ci is the confidence interval 0.68 for 68% and 0.9 for 90% as it was asked for 
+# ortho = TRUE correspond to the cholesky identification of the shock 
+
+```
+
+### Graphs
+
+#### Government spending
+
+```{r}
+imp  <- "rgov_dt_quad"
+resp <- "rgov_dt_quad"
+
+x  <- IRF_model_68$irf[[imp]][, resp]
+lo <- IRF_model_68$Lower[[imp]][, resp]
+hi <- IRF_model_68$Upper[[imp]][, resp]
+h  <- 0:(length(x)-1)
+
+yl <- range(c(lo, hi), na.rm = TRUE)
+
+plot(h, x, type="l", xlab="Quarter", ylab="IRF",
+     main=paste("government spending response"),
+     ylim = yl)
+abline(h=0, lty=2)
+lines(h, lo, lty=3)
+lines(h, hi, lty=3)
+```
+
+#### GDP
+
+```{r}
+imp  <- "rgov_dt_quad"
+resp <- "rgdp_dt_quad"
+
+x  <- IRF_model_68$irf[[imp]][, resp]
+lo <- IRF_model_68$Lower[[imp]][, resp]
+hi <- IRF_model_68$Upper[[imp]][, resp]
+h  <- 0:(length(x)-1)
+
+yl <- range(c(lo, hi), na.rm = TRUE)
+
+plot(h, x, type="l", xlab="time", ylab="IRF",
+     main=paste("gdp response"),
+     ylim = yl)
+abline(h=0, lty=2)
+lines(h, lo, lty=3)
+lines(h, hi, lty=3)
+
+```
+
+#### Consumption
+
+```{r}
+imp  <- "rgov_dt_quad"
+resp <- "rcons_dt_quad"
+
+x  <- IRF_model_68$irf[[imp]][, resp]
+lo <- IRF_model_68$Lower[[imp]][, resp]
+hi <- IRF_model_68$Upper[[imp]][, resp]
+h  <- 0:(length(x)-1)
+
+yl <- range(c(lo, hi), na.rm = TRUE)
+
+plot(h, x, type="l", xlab="time", ylab="IRF",
+     main=paste("consumption response"),
+     ylim = yl)
+abline(h=0, lty=2)
+lines(h, lo, lty=3)
+lines(h, hi, lty=3)
+
+```
+
+#### EPU
+
+```{r}
+imp  <- "rgov_dt_quad"
+resp <- "epu_dm"
+
+x  <- IRF_model_68$irf[[imp]][, resp]
+lo <- IRF_model_68$Lower[[imp]][, resp]
+hi <- IRF_model_68$Upper[[imp]][, resp]
+h  <- 0:(length(x)-1)
+
+yl <- range(c(lo, hi), na.rm = TRUE)
+
+plot(h, x, type="l", xlab="time", ylab="IRF",
+     main=paste("epu response"),
+     ylim = yl)
+abline(h=0, lty=2)
+lines(h, lo, lty=3)
+lines(h, hi, lty=3)
+
+```
+
+#### ALL
+
+```{r}
+imp <- "rgov_dt_quad"
+responses <- c("rgov_dt_quad", "rgdp_dt_quad", "rcons_dt_quad", "epu_dm")
+
+h <- 0:(nrow(IRF_model_68$irf[[imp]]) - 1)
+
+par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))  
+
+for (resp in responses) {
+  x  <- IRF_model_68$irf[[imp]][, resp]
+  lo <- IRF_model_68$Lower[[imp]][, resp]
+  hi <- IRF_model_68$Upper[[imp]][, resp]
+
+  yl <- range(c(lo, hi), na.rm = TRUE)
+
+  plot(h, x, type="l", xlab="time", ylab="IRF",
+       main=paste(resp, "response"),
+       ylim = yl)
+  abline(h=0, lty=2)
+  lines(h, lo, lty=3)
+  lines(h, hi, lty=3)
+}
+
+par(mfrow = c(1, 1))
+```
+
+#### ALL 68
+
+```{r}
+imp <- "rgov_dt_quad"
+responses <- c("rgov_dt_quad", "rgdp_dt_quad", "rcons_dt_quad", "epu_dm")
+h <- 0:(nrow(IRF_model_68$irf[[imp]]) - 1)
+
+
+pdf("IRF_4plots_68CI.pdf", width = 10, height = 7)  
+
+par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
+
+for (resp in responses) {
+  x  <- IRF_model_68$irf[[imp]][, resp]
+  lo <- IRF_model_68$Lower[[imp]][, resp]
+  hi <- IRF_model_68$Upper[[imp]][, resp]
+
+  yl <- range(c(lo, hi), na.rm = TRUE)
+
+  plot(h, x, type="l", xlab="time", ylab="IRF",
+       main=paste(resp, "response"),
+       ylim = yl)
+  abline(h=0, lty=2)
+  lines(h, lo, lty=3)
+  lines(h, hi, lty=3)
+}
+
+par(mfrow = c(1, 1))
+
+dev.off()
+
+```
+
+#### ALL 90
+
+```{r}
+imp <- "rgov_dt_quad"
+responses <- c("rgov_dt_quad", "rgdp_dt_quad", "rcons_dt_quad", "epu_dm")
+h <- 0:(nrow(IRF_model_90$irf[[imp]]) - 1)
+
+
+pdf("IRF_4plots_90CI.pdf", width = 10, height = 7)  
+
+par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
+
+for (resp in responses) {
+  x  <- IRF_model_90$irf[[imp]][, resp]
+  lo <- IRF_model_90$Lower[[imp]][, resp]
+  hi <- IRF_model_90$Upper[[imp]][, resp]
+
+  yl <- range(c(lo, hi), na.rm = TRUE)
+
+  plot(h, x, type="l", xlab="time", ylab="IRF",
+       main=paste(resp, "response"),
+       ylim = yl)
+  abline(h=0, lty=2)
+  lines(h, lo, lty=3)
+  lines(h, hi, lty=3)
+}
+
+par(mfrow = c(1, 1))
+
+dev.off()
+
+
+```
+
+### IRF Result table 68
+
+```{r}
+
+imp <- "rgov_dt_quad"
+responses <- c("rgov_dt_quad", "rgdp_dt_quad", "rcons_dt_quad", "epu_dm")
+Hs <- c(0, 4, 8, 12, 20, 24)
+
+fmt_cell <- function(val, lo, hi, digits=6){
+  star <- !(lo <= 0 & hi >= 0)   
+  paste0(sprintf(paste0("%.",digits,"f"), val), if(star) "$^{*}$" else "")
+}
+
+make_row <- function(resp){
+  x  <- IRF_model_68$irf[[imp]][, resp]
+  lo <- IRF_model_68$Lower[[imp]][, resp]
+  hi <- IRF_model_68$Upper[[imp]][, resp]
+
+  vals <- sapply(Hs, function(h){
+    fmt_cell(x[h+1], lo[h+1], hi[h+1])
+  })
+
+  hpk <- which.max(abs(x)) - 1
+  peak_txt <- paste0(fmt_cell(x[hpk+1], lo[hpk+1], hi[hpk+1]), " (", hpk, ")")
+
+  c(resp, vals, peak_txt)
+}
+
+tab68 <- as.data.frame(do.call(rbind, lapply(responses, make_row)), stringsAsFactors = FALSE)
+colnames(tab68) <- c("Variable", paste0(Hs, "q"), "peak")
+
+tab68_kable <- kable(tab68,
+      format = "latex",
+      booktabs = TRUE,
+      escape = FALSE,
+      align = c("l", rep("c", ncol(tab68)-1)),
+      caption = "Responses to a government spending shock (68\\% bootstrap CI). $^*$ indicates 0 outside CI."
+) |>
+  kable_styling(latex_options = c("hold_position")) |>
+  add_header_above(c(
+    " " = 1,
+    "Responses (quarters after shock)" = length(Hs),
+    " " = 1
+  ))
+
+save_kable(tab68_kable, file = "table_68.tex")
+
+```
+
+### IRF Result table 90
+
+```{r}
+
+imp <- "rgov_dt_quad"
+responses <- c("rgov_dt_quad", "rgdp_dt_quad", "rcons_dt_quad", "epu_dm")
+Hs <- c(0, 4, 8, 12, 20, 24)
+
+fmt_cell <- function(val, lo, hi, digits=6){
+  star <- !(lo <= 0 & hi >= 0)   
+  paste0(sprintf(paste0("%.",digits,"f"), val), if(star) "$^{*}$" else "")
+}
+
+make_row <- function(resp){
+  x  <- IRF_model_90$irf[[imp]][, resp]
+  lo <- IRF_model_90$Lower[[imp]][, resp]
+  hi <- IRF_model_90$Upper[[imp]][, resp]
+
+  vals <- sapply(Hs, function(h){
+    fmt_cell(x[h+1], lo[h+1], hi[h+1])
+  })
+
+  hpk <- which.max(abs(x)) - 1
+  peak_txt <- paste0(fmt_cell(x[hpk+1], lo[hpk+1], hi[hpk+1]), " (", hpk, ")")
+
+  c(resp, vals, peak_txt)
+}
+
+tab90 <- as.data.frame(do.call(rbind, lapply(responses, make_row)), stringsAsFactors = FALSE)
+colnames(tab90) <- c("Variable", paste0(Hs, "q"), "peak")
+
+tab90_kable <- kable(tab90,
+      format = "latex",
+      booktabs = TRUE,
+      escape = FALSE,
+      align = c("l", rep("c", ncol(tab90)-1)),
+      caption = "Responses to a government spending shock (90\\% bootstrap CI). $^*$ indicates 0 outside CI."
+) |>
+  kable_styling(latex_options = c("hold_position")) |>
+  add_header_above(c(
+    " " = 1,
+    "Responses (quarters after shock)" = length(Hs),
+    " " = 1
+  ))
+
+save_kable(tab90_kable, file = "table_90.tex")
+
+```
+
+# FEVD
+
+```{r}
+# FEVD over 24 quarters (same horizon as IRFs)
+fevd_24 <- fevd(var_model, n.ahead = 24)
+
+# Display FEVD results
+fevd_24
+
+```
+
+```{r}
+
+# 1) Passer en format long
+fevd_long <- imap_dfr(fevd_24, ~{
+  df <- as.data.frame(.x)
+  df$horizon  <- seq_len(nrow(df))
+  df$response <- .y
+  df %>%
+    pivot_longer(
+      cols = -c(horizon, response),
+      names_to = "shock",
+      values_to = "share"
+    )
+}) %>%
+  mutate(share_pct = 100 * share)
+
+# 2) Fixer l'ordre des variables (tes 4 variables)
+resp_order  <- c("rgov_dt_quad", "rgdp_dt_quad", "rcons_dt_quad", "epu_dm")
+shock_order <- c("rgov_dt_quad", "rgdp_dt_quad", "rcons_dt_quad", "epu_dm")
+
+fevd_long <- fevd_long %>%
+  mutate(
+    response = factor(response, levels = resp_order),
+    shock    = factor(shock, levels = shock_order)
+  )
+
+# 3) Fonction plot : un graph par variable
+plot_fevd_one <- function(resp_name){
+  ggplot(filter(fevd_long, response == resp_name),
+         aes(x = horizon, y = share_pct, fill = shock)) +
+    geom_col(width = 0.85, color = "grey20", linewidth = 0.2) +
+    scale_fill_grey(start = 0.85, end = 0.15) +
+    scale_x_continuous(breaks = seq(1, max(fevd_long$horizon), by = 2)) +
+    coord_cartesian(ylim = c(0, 100)) +
+    labs(
+      title = paste("FEVD for", resp_name),
+      x = "Horizon (quarters)",
+      y = "Percentage",
+      fill = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold")
+    )
+}
+
+# 4) Générer les 4 plots
+plots <- lapply(resp_order, plot_fevd_one)
+names(plots) <- resp_order
+
+
+
+# Option: afficher les 4 à la suite (base R)
+for(p in plots) print(p)
+
+
+
+```
+
+```{r}
+p_2x2 <- (plots[["rgov_dt_quad"]] | plots[["rgdp_dt_quad"]]) /
+         (plots[["rcons_dt_quad"]] | plots[["epu_dm"]])
+
+p_2x2
+
+```
+
+# References

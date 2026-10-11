@@ -1,0 +1,1714 @@
+---
+title: "Signaux Faibles: EDA & Analysis Part"
+author: "Victoria Godio, Baptiste Messant & Raphael Perilhou"
+format: 
+  html:
+    code-fold: true
+    code-summary: "Show code"
+    toc: true
+editor: visual
+bibliography: references_scoring.bib
+csl: apa.csl 
+---
+
+# Part 2 : EDA and Analysis.
+
+## Initialisation
+
+```{r}
+#| include: false
+library(stargazer)
+library(arrow)
+library(tidyverse)
+library(lubridate)
+library(stringr)
+library(FactoMineR)
+library(factoextra)
+library(rlang)
+library(DescTools)
+library(rpart)
+library(rpart.plot)
+library(glmnetUtils)
+library(ROCR)
+library(purrr)
+library(MASS)
+library(caret)
+library(xgboost)
+library(pROC)
+
+
+setwd("/Users/baptiste/Desktop/Master_2/Semester 1/scoring 2/Scoring project/Signaux_faibles")
+rm(list=ls())
+```
+
+## Section 1: EDA
+
+In this section, we explore the dataframe we obtain.
+
+### Section 1.1 Default rates
+
+First of all, we want to look how our default rate are distributed across the years.
+
+```{r}
+DF_FULL <- read_parquet("data/processed/FINAL_DATABASE.parquet")
+
+DF_FULL <- DF_FULL %>%
+  mutate(
+    date_cloture_exercice = as.Date(date_cloture_exercice),
+    year= format(date_cloture_exercice, "%Y"),
+    default_event = factor(default_event,
+                           levels = c(0, 1),
+                           labels = c("No default", "Default")))
+
+df_defaut_annee <- DF_FULL %>%
+  group_by(year) %>%
+  summarise(
+    default_rate = mean(as.numeric(default_event == "Default")) * 100,
+    nb_entreprises = n()
+  )
+
+# Annual rate of default 
+ggplot(df_defaut_annee, aes(x = year, y = default_rate)) +
+  geom_col(fill = "#007FFF") +
+  geom_text(aes(label = round(default_rate, 2)), vjust = -0.3, size = 3) +
+  labs(
+    title = "Annual rate of default",
+    x = "Closing year",
+    y = "Default rate (%)"
+  ) +
+  theme_minimal()
+```
+
+In our data set, the default rate exhibits a downward trend over time. This is consistent with the trend observed in France over the same period for all sectors. Below is a graph using the defaillance.csv data (to reproduce the graph from <https://www.banque-france.fr/fr/statistiques/entreprises/defaillances-dentreprises-2025-01>, for our period of interest).\
+
+```{r}
+#| message: false
+#| warning: false
+defaillance <- read_csv("data/raw/defaillance.csv")
+defaillance <- defaillance %>%
+  rename(year = Category, cumul_default = `cumul du nombre des défaillances sur les 12 derniers mois`)
+
+defaillance_plot <- defaillance %>%
+  mutate(
+    year = str_replace_all(
+      year,
+      c(
+        "janv." = "Jan", "févr." = "Feb", "mars" = "Mar",
+        "avr." = "Apr", "mai" = "May", "juin" = "Jun",
+        "juil." = "Jul", "août" = "Aug", "sept." = "Sep",
+        "oct." = "Oct", "nov." = "Nov", "déc." = "Dec"
+      )
+    ),
+    date = my(year, locale = "en_US")
+  ) %>%
+  filter(year(date) >= 2014, year(date) <= 2022)
+
+ggplot(defaillance_plot, aes(x = date, y = cumul_default)) +
+  geom_line(
+    linewidth = 1,
+    colour = "#CC0000"
+  ) +
+  labs(
+    title = "Business failures in France",
+    x = NULL,
+    y = "Number of firms"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
+
+
+```
+
+An additional explanation is the way the data set is constructed. Namely, the absence of firm “resurrections” following a default à la @bardos2007stake, which mechanically reduce the number of defaulting firms over time. However, when we removed observations after the first default, the total number of observations only slightly decrease. Thus, it suggests that the data set construction has a limited impact on the observed dynamics. In light of this and the actual data from Banque de France, we can conclude that the downward trend in default rates reflects the reality.
+
+### Section 1.2 Missing Values
+
+In this section, we want to check if we have many missing values. If it is the case, we need to establish a strategy to address the issue.
+
+```{r}
+na_share_per_column <- DF_FULL %>%
+  summarise(across(everything(), ~ mean(is.na(.x)) * 100)) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "na_share") %>%
+  arrange(desc(na_share))
+
+stargazer(na_share_per_column, type = "text", summary = F, title = "Share of NAs per variable:", rownames = F)
+
+
+
+```
+
+For "date_jugement" and "nature_jugement" this is expected as most of the companies do not default. Also, it has no impact on our analysis as we only use those observation to create the default variable.
+
+However, for other variables this is concerning. To address it we decide to first keep only the non-default companies who have less missing values. Of course, it assumes that the number of NAs is independent of the company's characteristics. We choose a low quantile (5% of the non-defaulting companies with less NAs) such that the data is cleaner and it also help us to rebalance our data as the share of defaulting firms mechanically increases. Then, on the remaining companies, we only keep variables with less than 25% missing values, which we replace by their respective median. We use a threshold as it would make no sense to replace missing values by the median if a variable has to many NAs.
+
+#### Keep 5% best non-default companies + 25% threshold
+
+At first we wanted to remove the rows with the more NAs. However this could create inconsistency. For instance, if a company has a lot of NAs during one year there would be a year with no observation for this company. Hence, we decide to remove directly the non-default firms which across our period of interest have the more NAs.
+
+We first proceed to select the best 5% non-default companies:
+
+```{r}
+
+DF_FULL <- read_parquet("data/processed/FINAL_DATABASE.parquet")
+observations <- c("siren", "date_cloture_exercice", "default_event")
+
+#First we compute NA share per row
+df_na_counting <- DF_FULL %>%
+  mutate(na_share_row = rowMeans(is.na(across(-all_of(observations)))))
+
+#Separate defaults and non-defaults
+defaults <- df_na_counting %>% filter(default_event == 1)
+non_defaults <- df_na_counting %>% filter(default_event == 0)
+
+#Now we aggregate per company
+company_na_share <- non_defaults %>%
+  group_by(siren) %>%
+  summarise(company_na_share = mean(na_share_row, na.rm = TRUE)) %>%
+  ungroup()
+
+#Keep only companies with the lowest NAs share (5%)
+threshold <- quantile(company_na_share$company_na_share, 0.05, na.rm = TRUE)
+
+companies_kept <- company_na_share %>%
+  filter(company_na_share <= threshold) %>%
+  pull(siren)
+
+non_defaults_kept <- non_defaults %>%
+  filter(siren %in% companies_kept)
+
+#Recombine with defaults
+df_selected_companies <- bind_rows(defaults, non_defaults_kept) %>%
+  dplyr::select(-na_share_row)
+```
+
+Now, we remove the variables with more than 25% NAs:
+
+```{r}
+na_share_all <- df_selected_companies %>%
+  summarise(across(
+    -all_of(observations),
+    ~ mean(is.na(.x))
+  )) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "na_share")
+
+vars_to_keep <- na_share_all %>%
+  filter(na_share <= 0.25) %>%
+  pull(variable)
+
+df_selected_variables <- df_selected_companies %>%
+  dplyr::select(all_of(observations), all_of(vars_to_keep))
+
+```
+
+Finally, we replace the remaining missing values by their respective median:
+
+```{r}
+DF_FULL_NONAS <- df_selected_variables %>%
+  mutate(across(-all_of(observations),
+                ~ if_else(is.na(.x), median(.x, na.rm = TRUE), .x)))
+
+#We verify
+check <- DF_FULL_NONAS %>%
+  summarise(across(-all_of(observations), ~ mean(is.na(.x))))
+stargazer(check, summary = F, type = "text", rownames = F, title = "Check there is no more NA")
+```
+
+#### Create the ratios and financial indicators
+
+We now create our financial indicators and ratios using only the remaining variables. Recall that when we created the dataset, we kept only some keys in "liasse" that were used for the ratios on @laloupefinanciere2024demonstration. But since, we removed some variables when dealing with the NAs, we make a code such that only ratios which use the remaining variables are constructed. For that, we build the function "safe_mutate" with the help of chat GPT.
+
+```{r}
+observations <- c("siren", "date_cloture_exercice", "default_event")
+
+numeric_cols_full <- c(
+  "FL","FM","FN","FO","FS","FT","FU","FV","FW","FX","FY","FZ",
+  "HP","HQ","GW","FP","GA","GB","GC","GD","GM","GQ","HA","HE",
+  "HJ","HK","CJ","CK","CF","CG","CD","CE","DW","DX","DY","DZ",
+  "EA","EB","FJ","BJ","BK","DS","DT","DU","DV","EH","DL","AA",
+  "DO","FC","GG","HN","YP","GF","GP","GU","CO","1A","EE","BL",
+  "BN","BP","BR","BT","BM","BO","BQ","BS","BU","BX","BY"
+)
+
+numeric_cols <- intersect(numeric_cols_full, colnames(DF_FULL_NONAS))
+
+#Safe mutate function: only creates variable if all required variables exist.
+safe_mutate <- function(data, name, vars, expr) {
+  if (all(vars %in% colnames(data))) {
+    data %>% mutate(!!name := !!parse_expr(expr))
+  } else data
+}
+
+#Convert numeric columns and arrange
+DF_Ratios <- DF_FULL_NONAS %>%
+  mutate(across(all_of(numeric_cols), as.numeric)) %>%
+  arrange(siren, date_cloture_exercice)
+
+#We construct the intermediate variables
+DF_Ratios <- DF_Ratios %>%
+  safe_mutate("CHIFFRE_AFFAIRE", "FL", "FL") %>% 
+  safe_mutate("RESULTAT_FINANCIER", c("GP","GU"), "GP - GU") %>%
+  safe_mutate("TOTAL_ACTIF", c("CO","1A"), "CO - `1A`") %>%
+  safe_mutate("VA", c("FL","FM","FN","FS","FT","FU","FV","FW","HP","HQ"),
+              "FL + FM + FN - FS - FT - FU - FV - FW + HP + HQ") %>%
+  safe_mutate("EBE", c("FL","FM","FN","FO","FS","FT","FU","FV","FW","FX","FY","FZ","HP","HQ"),
+              "FL + FM + FN + FO - FS - FT - FU - FV - FW - FX - FY - FZ + HP + HQ") %>%
+  safe_mutate("CAF", c("GW","FP","GA","GB","GC","GD","GM","GQ","HA","HE","HJ","HK","HP","HQ"),
+              "GW - FP + GA + GB + GC + GD - GM + GQ + HA - HE - HJ - HK + 0.8*(HP + HQ)") %>%
+  safe_mutate("BFR", c("CJ","CK","CF","CG","CD","CE","DW","DX","DY","DZ","EA","EB"),
+              "CJ - CK - CF + CG - CD + CE - DW - DX - DY - DZ - EA - EB") %>%
+  safe_mutate("EXPORT", c("FL","FJ"), "FL - FJ") %>%
+  safe_mutate("ACTIF_IMMO", c("BJ","BK"), "BJ - BK") %>%
+  safe_mutate("DETTES_FIN", c("DS","DT","DU","DV","EH"), "DS + DT + DU + DV - EH") %>%
+  safe_mutate("CP", c("DL"), "DL") %>%
+  safe_mutate("CP_AJUSTE", c("DL","AA"), "DL - AA") %>%
+  safe_mutate("RESS_STABLES", c("DL","DO","AA","DS","DT","DU","DV","EH"),
+              "DL + DO - AA + DS + DT + DU + DV - EH")
+
+#We construct the ratios
+DF_Ratios <- DF_Ratios %>%
+  safe_mutate("ratio_marge_commerciale", c("FC","FS","FT"), "(FC - FS - FT) / FC") %>%
+  safe_mutate("ratio_marge_exploitation", c("GG","FL"), "GG / FL") %>%
+  safe_mutate("ratio_marge_nette", c("HN","FL"), "HN / FL") %>%
+  safe_mutate("ratio_rentabilite_economique", c("VA","RESS_STABLES"), "VA / RESS_STABLES") %>%
+  safe_mutate("ratio_rentabilite_financiere", c("HN","DL","AA"), "HN / (DL - AA)") %>%
+  safe_mutate("ratio_ca_par_employe", c("FL","YP"), "FL / YP") %>%
+  safe_mutate("ratio_va_par_employe", c("VA","YP"), "VA / YP") %>%
+  safe_mutate("ratio_charges_salariales_par_employe", c("FY","FZ","YP"), "(FY + FZ)/YP") %>%
+  safe_mutate("ratio_salaires_par_employe", c("FY","YP"), "FY / YP") %>%
+  safe_mutate("ratio_rcai_par_employe", c("GW","YP"), "GW / YP") %>%
+  safe_mutate("total_charges_expl_corrige", c("GF","HP","HQ"), "GF - 0.2*(HP + HQ)") %>%
+  safe_mutate("ratio_part_charges_externes", c("FS","FT","FU","FV","FW","HP","HQ","total_charges_expl_corrige"),
+              "(FS + FT + FU + FV + FW - HP - HQ) / total_charges_expl_corrige") %>%
+  safe_mutate("ratio_part_charges_salariales", c("FY","FZ","total_charges_expl_corrige"),
+              "(FY + FZ) / total_charges_expl_corrige") %>%
+  safe_mutate("ratio_part_amortissements_cb", c("GA","HP","HQ","total_charges_expl_corrige"),
+              "(GA + 0.8*(HP + HQ)) / total_charges_expl_corrige") %>%
+  safe_mutate("ratio_part_autres_charges", c("GF","FS","FT","FU","FV","FW","FY","FZ","GA","total_charges_expl_corrige"),
+              "(GF - FS - FT - FU - FV - FW - FY - FZ - GA) / total_charges_expl_corrige") %>%
+  safe_mutate("ratio_couv_ca_par_bfr_jours", c("BFR","FL"), "BFR * 365 / FL") %>%
+  safe_mutate("ratio_rotation_stocks_jours", c("BL","BN","BP","BR","BT","BM","BO","BQ","BS","BU","FL","GG"),
+              "(BL + BN + BP + BR + BT - BM - BO - BQ - BS - BU) * 365 / (FL - GG)") %>%
+  safe_mutate("ratio_duree_credit_client_jours", c("BX","BY","FL"), "(BX - BY) * 365 / (FL * 1.2)") %>%
+  safe_mutate("ratio_duree_credit_fournisseur_jours", c("DX","FS","FU","FW"), "DX * 365 / ((FS + FU + FW) * 1.2)") %>%
+  safe_mutate("ratio_endettement", c("DETTES_FIN","RESS_STABLES"), "DETTES_FIN / RESS_STABLES") %>%
+  safe_mutate("ratio_capacite_remboursement", c("DETTES_FIN","CAF"), "DETTES_FIN / CAF") %>%
+  safe_mutate("ratio_taux_valeur_ajoutee", c("VA","FL"), "VA / FL") %>%
+  safe_mutate("ratio_taux_exportation", c("EXPORT","FL"), "EXPORT / FL") %>%
+  safe_mutate("ratio_actif_immo_sur_ca", c("ACTIF_IMMO","FL"), "ACTIF_IMMO / FL")
+```
+
+Ratios could be divided by a 0 value and thus create a NA or inf value. Hence we replace NAs or non-finite value by their median. But first we verify that there is not too many values to modify which would bias our results.
+
+```{r}
+#We first check for NAs
+check_NAs <- DF_Ratios %>%
+  summarise(across(-all_of(observations), ~ mean(is.na(.x)))) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "na_share") %>%
+  filter(na_share > 0) %>%
+  arrange(desc(na_share))
+
+stargazer(check_NAs, type = "text", summary = FALSE, rownames = FALSE, title = "Check how many NAs created")
+
+#We then check for non-finite values
+check_finite <-  DF_Ratios %>%
+  summarise(across(-all_of(observations), ~ mean(!is.finite(.x)))) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "infinite_share") %>%
+  filter(infinite_share > 0) %>%
+  arrange(desc(infinite_share))
+
+stargazer(check_finite, type = "text", summary = FALSE, rownames = FALSE, title = "Check how many non-finite values created")
+
+
+```
+
+We see that only a little amount of values must be changed, thus we replace by median:
+
+```{r}
+DF_Ratios <- DF_Ratios %>%
+  mutate(across(
+    -all_of(observations),
+    ~ if_else(!is.finite(.x), median(.x, na.rm = TRUE), .x)
+  ))
+
+write_parquet(DF_Ratios, "data/processed/DF_Ratios.parquet")
+```
+
+It is important to note that due to many NAs we end up with only 13 variables created . Therefore, we also keep the raw financial indicators from the INPI data set.
+
+### Section 1.3 Bivariate Plots
+
+```{r}
+DF <- read_parquet("data/processed/DF_Ratios.parquet")
+```
+
+We use bivariate plots in order to have a first look at how each variable plays a role in default. Also, we look if we have to deal with some extreme values.
+
+```{r}
+#| warning: false
+vars_quanti <- names(DF %>% select_if(is.numeric))
+for(var in vars_quanti){
+  var <- as.name(var)
+  print(ggplot(DF %>%
+                 mutate(Y = as.numeric(default_event)-1), aes(x=!! var,y = default_event)) +
+          geom_jitter(height = 0.1, width = 0) +
+          geom_smooth(method = "glm", 
+                      formula = y ~ x,
+                      method.args = list(family = "binomial"), 
+                      se = FALSE,
+                      col = "#79443B"))} 
+```
+
+Looking at the bivariate plots with non-winsorised data, we can see that many variables have extreme values. Although there are not many, they impact the visualisation and the relationship of all the data on our graph. For example, we can look at "ratio_actif_immo_sur_ca", which has only one extreme value, yet impacts the distribution of all the other variables. The same is true for "ratio_taux_exportation" and "ratio_duree_credit_client_jours", among many others. To try to fix this, we winsorise our data and look if this has an impact.
+
+```{r}
+vars_to_winsor <- DF %>%
+  dplyr::select(where(is.numeric)) %>%
+  dplyr::select(-default_event) %>%  # do not winsorize the outcome
+  names()
+
+DF_WINS <- DF %>%
+  mutate(
+    across(
+      all_of(vars_to_winsor),
+      ~ Winsorize(.x, quantile(.x, probs = c(0.05, 0.95), na.rm = TRUE) )
+    )
+  )
+
+write_csv(DF_WINS, "data/processed/DF_WINS.csv")
+```
+
+We make the bivariate plots with our winsorised data:
+
+```{r}
+#| warning: false
+vars_quanti <- names(DF_WINS %>% select_if(is.numeric))
+for(var in vars_quanti){
+  var <- as.name(var)
+  print(ggplot(DF_WINS %>%
+                 mutate(Y = as.numeric(default_event)-1), aes(x=!! var,y = default_event)) +
+          geom_jitter(height = 0.1, width = 0) +
+          geom_smooth(method = "glm", 
+                      formula = y ~ x,
+                      method.args = list(family = "binomial"), 
+                      se = FALSE,
+                      col = "#0070FF"))}
+```
+
+According to the results obtained, we have a decreasing relationship between the default event and the level of equity. We can also observe that as the level of depreciation expenses increases the probability of defaulting drops. This result makes sense as a higher level of depreciation expenses is often related to a higher level of assets (machinery, buildings etc).
+
+Conversely, we can also observe that the probability of defaulting increases when the financial result becomes positive. This could be because financial income may only reflect exceptional or temporary income, particularly in the hospitality and restaurant sector. This is because financial income in this sector is often temporary and unrelated to its core activities.
+
+We also find that when commercial margin ratio becomes positive, the probability of default increases slightly. At the first sight it can be counter-intuitive, but when we look closely to how the ratio is constructed and we remarked that this ratio depends negatively with the purchase of goods and variations of goods. In the specific sector of hospitality and restaurants typically experience large variations in purchases of goods and inventories due to demand fluctuations of their customer base.
+
+Additionally, as the gross margin ratio increases, the probability of default rate decreases. The gross margin ratio is computed by its operating Income divided by its commercial margin. This result make sense as the operating income relates to the profit generated by the core activities of the businesses before the taxes and financial income.
+
+There is a negative relationship between the net margin ratio and the number of defaulting businesses. Indeed the net margin ratio is constructed by dividing the net results by its turnover. In other words, this ratio computes the how much profit is generated per unit of revenue.
+
+An increase of the customer credit duration ratio (measured in days) is associated with more defaulting businesses. This ratio is composed by accounts receivable and its depreciation divided by its turnover. A longer customer credit duration could indicate slower collection of receivables, which weakens liquidity and increases the probability of default of the business.
+
+Finally, we can also note that the exportation ratio, constructed from the overall level of exportation and the turnover, has a positive relationship with the probability of default. In the specific sector of hospitality and restaurant, a possible reason for this results is that a higher level of exportation may be associated with greater risks (exchange rate and geopolitical risks).
+
+### Section 1.4 Distribution
+
+We know look at some distributions.
+
+```{r}
+bdd_wins_2 <- DF_WINS %>%
+  mutate(
+    default_event = factor(default_event,
+                           levels = c(0, 1),
+                           labels = c("No default", "Default")))
+```
+
+#### Turnover
+
+```{r}
+# Turnover distribution 
+ggplot(bdd_wins_2, aes(x = CHIFFRE_AFFAIRE, fill = factor(default_event))) +
+  scale_fill_manual(values = c("No default" = "#CC5500", "Default" = "#E30022")) +
+  geom_histogram(
+    position = "identity",  
+    alpha    = 0.5,         
+    bins     = 50) +
+  labs(
+    title = "Turnover distribution by default status",
+    x = "Turnover",
+    y = "Number of companies",
+    fill = "Default status") +
+  theme_minimal()
+
+# Turnover distribution in log 
+ggplot(bdd_wins_2, aes(x = CHIFFRE_AFFAIRE, fill = factor(default_event))) +
+  scale_fill_manual(values = c("No default" = "#CC5500", "Default" = "#E30022")) +
+  geom_histogram(
+    position = "identity",  
+    alpha    = 0.5,         
+    bins     = 50) +
+  scale_x_log10() +
+  labs(
+    title = "Turnover distribution by default status in log",
+    x = "Turnover (log(10))",
+    y = "Number of companies",
+    fill = "Default status") +
+  theme_minimal()
+
+
+
+```
+
+Looking at the distribution of turnover, we can see that the higher the turnover, the fewer defaults there are. This is consistent with the idea that turnover directly reflects company productivity. However, this does not reflect company profitability. Most importantly, we see an important density of defaulting companies with a very low turnover.
+
+#### Net Income
+
+```{r}
+# Net Income distribution 
+ggplot(bdd_wins_2, aes(x = HN, fill = factor(default_event))) +
+  scale_fill_manual(values = c("No default" = "#CC5500", "Default" = "#E30022")) +
+  geom_histogram(
+    position = "identity",  
+    alpha = 0.5,         
+    bins = 50) +
+  labs(
+    title = "Net income distribution by default status",
+    x = "Net income (HN)",
+    y = "Number of companies",
+    fill = "Default status") +
+  theme_minimal()
+
+
+```
+
+The net income variable represents the profitability of a company in a given year. As can be seen here, the majority of defaults are located near 0, which suggests that companies have barely enough income to survive. For companies with a large net income, we only observe a few defaults, which is consistent since a larger net income indicates better financial health. Defaults can be related to external problems, such as legal issues. Conversely, we don't observe any defaults for companies with a very negative net income, which is related to the fact that a company can have a very bad accounting year but still have enough reserves to survive.
+
+#### Net Margin
+
+```{r}
+# Net Margin distribution 
+ggplot(bdd_wins_2, aes(x = ratio_marge_nette, fill = factor(default_event))) +
+  scale_fill_manual(values = c("No default" = "#CC5500", "Default" = "#E30022")) +
+  geom_histogram(
+    position = "identity",  
+    alpha = 0.5,         
+    bins = 50) +
+  labs(
+    title = "Net margin distribution by default status",
+    x = "Net margin",
+    y = "Number of companies",
+    fill = "Default status") +
+  theme_minimal()
+```
+
+Looking at the distribution of the net margin we cannot see a difference in the distribution of the company which defaulted and the ones which not defaulted since the only difference is the number of company in each category.
+
+Overall, the bivariate relationships seem fragile. Therefore, we delve into a higher-dimensional framework to capture joint variation across variables.
+
+### Section 1.5 PCA
+
+We first look at the PCA.
+
+```{r}
+#We select our variables
+pca_vars <- DF_WINS%>% dplyr::select(all_of(vars_quanti))
+
+#Run PCA
+pca_res <- PCA(pca_vars, scale.unit = TRUE, ncp = 10, graph = FALSE)
+
+#default_event to a factor for coloring
+default_factor <- factor(DF_WINS$default_event, levels = c(0,1), labels = c("Non-Default", "Default"))
+
+#Plot individuals with colors
+PCA_plot<- fviz_pca_ind(
+  pca_res,
+  geom.ind = "point",
+  col.ind = default_factor,
+  palette = c("#592720", "#ED9121"),
+  addEllipses = TRUE,
+  legend.title = "Default Event",
+) 
+
+PCA_plot
+```
+
+```{r}
+#| include: false
+ggsave("PCA.pdf", PCA_plot)
+```
+
+Strikingly, the first principal component alone explains 42.4% of the total variance, while the second explains only 9%. However, this is still weak and we do not observe a clear differentiation between default and non-default firms. Particularly, if we look at the ellipses which represent the average density for each category, the defaulting firms ellipse is a subset of the non-defaulting ellipse. Thus, we conclude that PCA cannot help to predict default. We explore an alternative method: the LDA.
+
+### Section 1.6 LDA
+
+To complement the EDA, we have also added a Linear Discriminant Analysis (LDA) model. The LDA model creates a combination of the explanatory variables in the data that maximize the separation between the two classes: the default and non-default companies.
+
+Before running the LDA model, we checked for any variables that were highly correlated (higher than 0.8) and removed them if necessary. Additionally, in order to run an LDA model, we checked whether there were any explanatory variables that were constant for both default and non-default companies. If so, we removed them from the model.
+
+```{r}
+#LDA on the the whole data
+#Identify the variables that are constant in the two groups (default and non-default companies)
+INPI_ratios <- DF_WINS
+const_vars <- INPI_ratios %>%
+  dplyr::select(-default_event) %>%
+  summarise(across(everything(),
+                   ~ length(unique(.x[INPI_ratios$default_event == 0])) == 1 |
+                     length(unique(.x[INPI_ratios$default_event == 1])) == 1)) %>%
+  stack() %>%
+  dplyr::rename(is_constant = values, variable = ind) %>%
+  filter(is_constant)
+
+if(nrow(const_vars) > 0){
+  message("Constante variables across the two groups : ", paste(const_vars$variable, collapse = ", "))
+} else {
+  message("No constant variables across the two groups.")
+}
+
+#Keep only the variables that are not constant for the default and non default firms
+vars_to_keep <- setdiff(names(INPI_ratios), const_vars$variable)
+
+
+df_tmp <- INPI_ratios %>%
+  dplyr::select(all_of(vars_to_keep))
+
+#Removal of collinar variables
+
+num_vars <- dplyr::select(df_tmp, dplyr::where(is.numeric))
+
+# Correlation Matrix
+cor_matrix <- cor(num_vars)
+
+# Identify the highly correlated greater than  0.8
+highCorr <- findCorrelation(cor_matrix, cutoff = 0.8)
+if(length(highCorr) > 0){
+  message("Removal colinear varibales : ", paste(names(num_vars)[highCorr], collapse = ", "))
+}
+
+vars_final <- setdiff(names(num_vars), names(num_vars)[highCorr])
+```
+
+```{r}
+# Dataset for  LDA
+df_lda <- df_tmp %>%
+  dplyr::select(all_of(vars_final), default_event)
+
+
+#LDA Model
+lda_model <- MASS::lda(default_event ~ ., data = df_lda)
+
+#Probailties and AUC computations
+
+prediction_lda <- predict(lda_model)$posterior[,2]
+
+#To plot the ROC curve
+pred1 <- prediction(prediction_lda, df_lda$default_event)
+perf1 <- performance(pred1, measure = "tpr", x.measure = "fpr")
+auc_lda1 <- performance(pred1, "auc")@y.values[[1]]
+
+#Plot the ROC and the AUC
+plot(perf1, main=paste0("ROC curve LDA (whole dataset) - AUC = ",round(auc_lda1,3)),
+     xlab="False Positive Rate",
+     ylab="True Positive Rate",
+     col="#B31B1B",
+     lwd = 2,
+     cutoff.label.function = function(x) {paste0("s = ", round(x,2))})
+
+
+```
+
+As the result seemed satisfactory we decided to explore the LDA a bit further. Hence, as we did for our next models, we separate our data set into a training set (2017-2019), a validation set (2020) and testing set (2021) to ensure a consistent comparison across models. By that, we mean that even if we do not need training-validation-testing for LDA per see, we do it so results are obtain on same size set, and can thus be compared with future Lasso, Decision Tree and XGBoost models.
+
+```{r}
+set.seed(31)
+
+INPI_ratios <- INPI_ratios %>%
+  mutate(date_cloture_exercice = as.Date(date_cloture_exercice)) %>%
+  arrange(date_cloture_exercice)
+
+INPI_ratios <- INPI_ratios %>%
+  mutate(year = as.integer(format(date_cloture_exercice, "%Y")))
+
+training_lda <- INPI_ratios %>% filter(year <= 2019)
+validation_lda <- INPI_ratios %>% filter(year == 2020)
+testing_lda    <-  INPI_ratios %>% filter(year == 2021)
+
+
+#We take care of removing constant variables
+const_vars <- training_lda %>%
+  dplyr::select(-default_event) %>%
+  summarise(across(everything(),
+                   ~ length(unique(.x[training_lda$default_event == 0])) == 1 |
+                     length(unique(.x[training_lda$default_event == 1])) == 1)) %>%
+  stack() %>%
+  dplyr::rename(is_constant = values, variable = ind) %>%
+  filter(is_constant)
+
+if(nrow(const_vars) > 0){
+  message("Constant variables across the two groups on the training set : ", paste(const_vars$variable, collapse = ", "))
+} else {
+  message("No constant variable across the two groups on the training set")
+}
+
+vars_to_keep <- setdiff(names(training_lda), const_vars$variable)
+
+
+train_tmp <- training_lda %>% dplyr::select(all_of(vars_to_keep)) %>% na.omit()
+validation_tmp <- validation_lda %>% dplyr::select(all_of(vars_to_keep)) %>% na.omit()
+test_tmp  <- testing_lda  %>% dplyr::select(all_of(vars_to_keep)) %>% na.omit()
+
+
+
+num_train <- dplyr::select(train_tmp, dplyr::where(is.numeric))
+cor_matrix <- cor(num_train, use = "pairwise.complete.obs")
+
+highCorr <- caret::findCorrelation(cor_matrix, cutoff = 0.8)
+if(length(highCorr) > 0){
+  message("Remove of collinear variables on the training set: ",
+          paste(names(num_train)[highCorr], collapse = ", "))
+}
+
+vars_final <- setdiff(names(num_train), names(num_train)[highCorr])
+
+
+train_lda <- train_tmp %>% dplyr::select(all_of(vars_final), default_event)
+valid_lda <- validation_tmp %>% dplyr::select(all_of(vars_final), default_event)
+test_lda  <- test_tmp  %>% dplyr::select(all_of(vars_final), default_event)
+
+#Fit the LDA on the training set
+lda_model <- MASS::lda(default_event ~ ., data = train_lda)
+
+#Get predictions and performance objects for training, validation and testing set.
+#prediction
+#Train: 
+pred_train_lda <- predict(lda_model, newdata = train_lda)$posterior[, 2]
+pred_lda_train <- ROCR::prediction(pred_train_lda, train_lda$default_event)
+
+#Validation
+pred_val_lda <- predict(lda_model, newdata = valid_lda)$posterior[, 2]
+pred_lda_val <- ROCR::prediction(pred_val_lda, valid_lda$default_event)
+
+#Test
+pred_test_lda <- predict(lda_model, newdata = test_lda)$posterior[, 2]
+pred_lda_test <- ROCR::prediction(pred_test_lda, test_lda$default_event)
+
+#Performance
+#Train:
+perf_lda_train <- ROCR::performance(pred_lda_train, measure = "tpr", x.measure = "fpr")
+auc_lda_train <- ROCR::performance(pred_lda_train, "auc")@y.values[[1]]
+#Validation:
+perf_lda_val <- ROCR::performance(pred_lda_val, measure = "tpr", x.measure = "fpr")
+auc_lda_val <- ROCR::performance(pred_lda_val, "auc")@y.values[[1]]
+
+#Test:
+perf_lda_test <- ROCR::performance(pred_lda_test, measure = "tpr", x.measure = "fpr")
+auc_lda_test <- ROCR::performance(pred_lda_test, "auc")@y.values[[1]]
+
+#Merged_lda
+
+plot(perf_lda_val, main = "ROC curve LDA on the Validation",
+     xlab = "False Positive Rate",
+     ylab = "True Positive Rate",
+     lwd = 2,
+     col  = "#177245")
+abline(0, 1, lty = 2, col = "#FFFDD0")
+plot(perf_lda_train, add=T, col = "#08457E")
+
+
+legend(
+  "bottomright",
+  legend = c(
+    paste("LDA on the training set (AUC =", round(auc_lda_train, 3),")"),
+    paste("LDA on the validation (AUC =", round(auc_lda_val, 3),")")
+  ),
+  col = c("#08457E", "#177245"),
+  lwd = 2,
+  bty = "n"
+)
+```
+
+Visually it appears that there is some overfitting. However, the LDA seems to already have some classification power. Now that we observed a potential overfitting problem, we just want to get our object on testing set to compare later our models. But since LDA has no parameters to choose, we just train directly on training+validation set (as other models are refitted on the merged set). This is also just to ensure consistency with how we proceed for our other models.
+
+```{r}
+# Refit LDA on training + validation (final model)
+train_val_lda <- dplyr::bind_rows(train_lda, valid_lda)
+
+lda_model_final <- MASS::lda(default_event ~ ., data = train_val_lda)
+
+# Extract LD1 scores from the test set predictions
+lda_pred_full <- predict(lda_model_final, newdata = test_lda)
+df_ld1 <- data.frame(
+  LD1 = lda_pred_full$x[, 1],  # Extract the LD1 discriminant scores
+  default_event = factor(test_lda$default_event)
+)
+```
+
+Now, we visually observe how an LDA score can separate default and non-default firms using density and boxplot.
+
+```{r}
+#Density wrt LD1 on the testing set
+ggplot(df_ld1, aes(x = LD1, fill = default_event)) +
+  geom_density(alpha = 0.35) +
+  scale_fill_manual(values = c("0" = "#177245", "1" = "#A40000")) +
+  labs(title = "Distribution LDA distribution (LD1) on the testing set",
+       x = "LD1 (score discriminant)",
+       fill = "default_event") +
+  theme_minimal()
+
+
+#Boxplot wrt LD1 on the testing set also
+ggplot(df_ld1, aes(x = default_event, y = LD1, fill = default_event)) +
+  geom_boxplot(alpha = 0.6) +
+  scale_fill_manual(values = c("0" = "#177245", "1" = "#A40000")) +
+  labs(title = "Boxplot of the LDA Score (LD1) by groups on the testing set",
+       x = "default_event", y = "LD1") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+The LDA achieves a very satisfactory AUC of 86.4% on the training set. To check whether this was due to overfitting, we assessed the model on the validation set corresponding to the year before final year of data (2020), achieving an AUC of 75.8%. Hence, there maybe a bit of overfitting but the AUC is decent.
+
+Additionally, we include two graphical representations to visualize the LDA discriminant score (LD1) on the testing sample and to assess its ability to distinguish between non-defaulting and defaulting firms. Both the boxplot and the density plot indicate that the LD1 score provides a relevant separation between the two groups. However, the graphs also reveal that, for a specific range of LD1 values, the distributions of defaulting and non-defaulting firms overlap, suggesting that the classification is not perfect and that some observations cannot be clearly assigned to one class based on the LD1 score alone. Therefore, we go further by using more complex models.
+
+## Section 2: Analysis
+
+Our strategy is to first train each model on a training set (2017-2019), then we obtain the parameters using the validation set (2020), afterwards we refit the model with its appropriate parameters on training+validation set (to gain some observations) and finally, we compare our models on testing set (2021). See Moody's methodology.
+
+### Section 2.1 LASSO
+
+We decided to run a Lasso regression model, following the Moody's methodology, to divide the data into training, validation and testing sets. Since we have a time series model, we divided our database into years. The training set comprises the years 2017 to 2019; the validation set, which is used to determine the optimal lambda for the Lasso, comprises the year 2020; and the testing set comprises the year 2021, which is used to evaluate our regressions.
+
+#### First Lasso (start with all variables)
+
+In this first model, we perform a regression analysis on the entire database to identify all the variables that influence the probability of default.
+
+```{r}
+#| message: false
+#| warning: false
+DF_WINS <- read_csv("data/processed/DF_WINS.csv")
+id_vars <- c("siren", "date_cloture_exercice")
+
+DF_WINS <- DF_WINS %>%
+  mutate(year = as.integer(format(date_cloture_exercice, "%Y")))
+
+training_set   <- DF_WINS %>% filter(year <= 2019)
+validation_set <- DF_WINS %>% filter(year == 2020)
+testing_set    <- DF_WINS %>% filter(year == 2021)
+
+lasso_path <- glmnetUtils::glmnet(
+  default_event ~ .,
+  data   = training_set %>% dplyr::select(- all_of(id_vars), -year),
+  family = "binomial",
+  alpha  = 1
+  )
+
+
+lasso_pred <- as.matrix(
+  predict(
+    lasso_path,
+    newdata = validation_set %>% dplyr::select(-all_of(id_vars), -year),
+    type = "response"
+  )
+)
+
+#dim(lasso_pred) 
+
+labels_val <- validation_set$default_event
+K <- ncol(lasso_pred)
+
+auc_lasso <- numeric(K)
+
+for (s in seq_len(K)) {
+  pred <- ROCR::prediction(lasso_pred[, s], labels_val)
+  auc  <- ROCR::performance(pred, measure = "auc")
+  auc_lasso[s] <- auc@y.values[[1]]
+}
+
+df_auc <- tibble(
+  lambda = lasso_path$lambda,
+  auc    = auc_lasso
+)
+
+ggplot(df_auc, aes(x = -log(lambda), y = auc)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Validation AUC along the LASSO path",
+    x = "-log(lambda)",
+    y = "AUC"
+  )
+
+row_best   <- which.max(df_auc$auc)
+best_lambda_full <- df_auc$lambda[row_best]
+best_auc_full    <- df_auc$auc[row_best]
+
+
+
+lasso_pred_train_full <- as.matrix(
+  predict(
+    lasso_path,
+    newdata = training_set %>% dplyr::select(-all_of(id_vars), -year),
+    s = best_lambda_full,
+    type = "response"
+  )
+)
+
+y_train_full <- training_set$default_event
+
+AUC_train_full <- auc(roc(y_train_full, lasso_pred_train_full, quiet = TRUE))
+
+
+train_val_set <- bind_rows(training_set, validation_set)
+
+lasso_final_full <- glmnetUtils::glmnet(
+  default_event ~ .,
+  data   = train_val_set %>% dplyr::select(-all_of(id_vars), -year),
+  family = "binomial",
+  alpha  = 1,
+  lambda = best_lambda_full
+)
+
+
+pred_test_full <- as.vector(
+  predict(
+    lasso_final_full,
+    newdata = testing_set %>% dplyr::select(-all_of(id_vars), -year),
+    type = "response"
+  )
+)
+
+#lasso_final_full$beta
+
+labels_test <- testing_set$default_event
+
+pred_obj_lasso_full <- ROCR::prediction(pred_test_full, labels_test)
+perf_obj_full <- ROCR::performance(pred_obj_lasso_full, "auc")
+
+auc_test_lasso_full <- perf_obj_full@y.values[[1]]
+cat("Best lambda =", round(best_lambda_full, 6),
+    "with trainning AUC =", round(AUC_train_full, 4),
+    "validation AUC =", round(best_auc_full, 4),
+    "and Test AUC =", round(auc_test_lasso_full, 4))
+```
+
+Here we see that the lambda obtain lead to a model with quasi no regularization. Hence the model obtain is similar to a logistic regression with all variables.
+
+```{r}
+roc_obj_lasso_full <- ROCR::performance(pred_obj_lasso_full, "tpr", "fpr")
+
+plot(roc_obj_lasso_full, 
+     add = F, 
+     main = "ROC Curve Lasso Full (testing set)", 
+     xlab="Specificity",
+     ylab="Sensitivity", 
+     lwd = 2,
+     col = "#FFA812") 
+abline(0,1)
+legend("bottomright", legend = paste0("Lasso Model (Full) - AUC: ", round(auc_test_lasso_full,4)), col = "#FFA812", lwd = 2)
+
+beta_table_full <- as.data.frame(as.matrix(lasso_final_full$beta)) %>%
+  rownames_to_column("variable") %>%
+  rename(beta = 2) %>%
+  mutate(odd_ratio = exp(beta)) %>%
+  arrange(desc(beta))
+
+
+stargazer(beta_table_full, title = "Variable impact on default (Lasso full)", summary = F, type = "text", rownames = F)
+
+```
+
+For this first Lasso model, we found that the optimal lambda was 6.8e-05, with an AUC of 0.96 on the training set, 0.90 on the validation set, and 0.85 on the testing set, which is excellent. Looking at the difference in the AUC between the training set and the validation set, we can see that there is some overfitting. Nevertheless, this gap is not too big, since we trained our model on three years' worth of data and validated and tested on one year's worth of data for each. Nevertheless, we can conclude that, with an AUC of 0.85, we have a good model.
+
+Examining the Lasso coefficients reveals that certain variables have a more significant impact on the probability of default than others. For example, the 'export rate', 'net margin' and 'commercial margin' have a positive impact of high magnitude on the probability of default, compared to other variables. However, this is not very coherent since 'net margin' and 'commercial margin' are directly linked to the company's financial health. Nevertheless, this effect can be biased by the size of turnover since these variables are divided by it. Conversely, the impact of the 'export rate' may also be biased, as its size could be due to low turnover. Since exports are also divided by it, this increases the value of the coefficient. Therefore, the impact of the 'export rate' is difficult to interpret. Furthermore, some variables have a negative impact on the probability of default, such as the 'exploitation margin' and the 'real estate turnover' ratio. This is coherent, as a large exploitation margin indicates that a company is not likely to be in financial distress. Conversely, a company with a lot of real estate assets can sell them if it is in financial distress, so it is also unlikely to be in financial distress if it holds real estate assets. Nevertheless, as with the 'export rate', it is difficult to interpret this variable since it is divided by the turnover.
+
+Looking at the odds ratio, we can see that an increase of one unit in 'export_rate' multiplies the odds of default by more than four. This confirms our concerns about the construction of these variables and their real effect on company defaults. Furthermore, we can see that an increase of one unit in the 'net margin' multiplies the odds of default by 1.8, this also confirms that the result is not very coherent. Regarding the negatively correlated coefficient, an increase of one unit in the 'real estate turnover' ratio decreases the odds of default by almost 5%, whereas an increase of one unit in the 'exploitation margin' decreases the odds of default by 79%.
+
+Since these are ratio or margin variables, an increase of one unit does not correspond to a 1% increase. This is why the increases and decreases in odds are so high.
+
+#### Second Lasso (Only the created ratio)
+
+In this second model, we carry out the same regression analysis as before, but with fewer variables. Here, we choose to keep only the variables created to analyse company defaults, to see their impact in isolation. This approach avoids multicollinearity issues, as our lambda was low in the first model. Deleting variables that may be correlated with each other may help the Lasso to perform selection. This may lead to less overfitting in our model, resulting in better coefficient estimation.
+
+```{r}
+#| message: false
+DF_WINS <- read_csv("data/processed/DF_WINS.csv")
+```
+
+```{r}
+#| warning: false
+# Variables to keep 
+vars <- c("default_event", 
+          "siren",
+          "date_cloture_exercice",
+          "CHIFFRE_AFFAIRE",
+          "RESULTAT_FINANCIER", 
+          "TOTAL_ACTIF", 
+          "EXPORT", 
+          "ACTIF_IMMO", 
+          "CP", 
+          "ratio_marge_commerciale", 
+          "ratio_marge_exploitation", 
+          "ratio_marge_nette", 
+          "ratio_duree_credit_client_jours", 
+          "ratio_duree_credit_fournisseur_jours", 
+          "ratio_taux_exportation", 
+          "ratio_actif_immo_sur_ca")
+
+# Variables to exclude
+id_vars <- c("siren", "date_cloture_exercice")
+
+DF_WINS <- DF_WINS %>%
+  dplyr::select(all_of(vars)) %>%
+  mutate(year = as.integer(format(date_cloture_exercice, "%Y")))
+
+training_set   <- DF_WINS %>% filter(year <= 2019)
+validation_set <- DF_WINS %>% filter(year == 2020)
+testing_set    <- DF_WINS %>% filter(year == 2021)
+
+lasso_path <- glmnetUtils::glmnet(
+  default_event ~ .,
+  data   = training_set %>% dplyr::select(- all_of(id_vars), -year),
+  family = "binomial",
+  alpha  = 1
+  )
+lasso_pred <- as.matrix(
+  predict(
+    lasso_path,
+    newdata = validation_set %>% dplyr::select(-all_of(id_vars), -year),
+    type = "response"
+  )
+)
+
+#dim(lasso_pred) 
+
+labels_val <- validation_set$default_event
+K <- ncol(lasso_pred)
+
+auc_lasso <- numeric(K)
+
+for (s in seq_len(K)) {
+  pred <- ROCR::prediction(lasso_pred[, s], labels_val)
+  auc  <- ROCR::performance(pred, measure = "auc")
+  auc_lasso[s] <- auc@y.values[[1]]
+}
+
+df_auc <- tibble(
+  lambda = lasso_path$lambda,
+  auc    = auc_lasso
+)
+ggplot(df_auc, aes(x = -log(lambda), y = auc)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Validation AUC along the LASSO path",
+    x = "-log(lambda)",
+    y = "AUC"
+  )
+row_best   <- which.max(df_auc$auc)
+best_lambda_ratio <- df_auc$lambda[row_best]
+best_auc_ratio    <- df_auc$auc[row_best]
+
+lasso_pred_train_ratio <- as.matrix(
+  predict(
+    lasso_path,
+    newdata = training_set %>% dplyr::select(-all_of(id_vars), -year),
+    s = best_lambda_ratio,
+    type = "response"
+  )
+)
+
+y_train_ratio <- training_set$default_event
+
+AUC_train_ratio <- auc(roc(y_train_ratio, lasso_pred_train_ratio, quiet = TRUE))
+
+
+train_val_set <- bind_rows(training_set, validation_set)
+
+lasso_final_ratio <- glmnetUtils::glmnet(
+  default_event ~ .,
+  data   = train_val_set %>% dplyr::select(-all_of(id_vars), -year),
+  family = "binomial",
+  alpha  = 1,
+  lambda = best_lambda_ratio
+)
+
+pred_test_ratio <- as.vector(
+  predict(
+    lasso_final_ratio,
+    newdata = testing_set %>% dplyr::select(-all_of(id_vars), -year),
+    type = "response"
+  )
+)
+
+labels_test <- testing_set$default_event
+
+pred_obj_lasso_ratio <- ROCR::prediction(pred_test_ratio, labels_test)
+perf_obj <- ROCR::performance(pred_obj_lasso_ratio, "auc")
+
+auc_test_lasso_ratio <- perf_obj@y.values[[1]]
+cat("Best lambda =", round(best_lambda_ratio, 6),
+    "with trainning AUC =", round(AUC_train_ratio, 4),
+    "validation AUC =", round(best_auc_ratio, 4),
+    "and Test AUC =", round(auc_test_lasso_ratio, 4))
+
+```
+
+Once again, we have a very small lambda and therefore a model similar to a logistic regression with all starting variables. Although this time we started with less variables.
+
+```{r}
+roc_obj_lasso_ratio <- ROCR::performance(pred_obj_lasso_ratio, "tpr", "fpr")
+
+plot(roc_obj_lasso_ratio, 
+     add = F,
+     main = "ROC Curve Lasso model (Ratio)",
+     xlab="Specificity",
+     ylab="Sensitivity", 
+     col = "darkred")
+abline(0,1)
+legend("bottomright", legend = c("Lasso Model (Ratio)"), col = c("darkred"), lwd = 2)
+
+beta_table_ratio <- as.data.frame(as.matrix(lasso_final_ratio$beta)) %>%
+  rownames_to_column("variable") %>%
+  rename(beta = 2) %>%
+  mutate(odd_ratio = exp(beta)) %>%
+  arrange(desc(beta))
+
+stargazer(beta_table_ratio, title = "Variable impact on default (Lasso ratio)", summary = F, type = "text", rownames = F)
+```
+
+For this second Lasso model, we found that the optimal lambda was 2.9e-05, with an AUC of 0.929 on the training set, 0.865 on the validation set, and 0.824 on the testing set, which is also excellent. Looking at the difference in the AUC between the training set and the validation set, we can see that there is more overfitting than before, this may be due to to the reduction of the nulmber of variables. Nevertheless, this gap is also not to big. Nevertheless, we can conclude that, with an AUC of 0.824, we also have a good model here even if it is not as good as before.
+
+Examining the Lasso coefficients reveals that some variables have a more significant impact on the probability of default than others. For example, as before, we can see that the 'export rate' and the 'commercial margin' have a positive and significant impact on the probability of default. Also, as before, we can see that the 'exploitation margin' and the 'real estate turnover' ratio have a negative impact on the probability of default. On the other hand, we can see that the 'net margin' now has a negative impact, which is more coherent since the 'net margin' represents the net earnings of a company per unit sold; therefore, the greater the net margin, the less likely it is for a company to default.
+
+Examining the odds ratio in the second model, we can observe that a one-unit increase in 'export_rate' multiplies the odds of default by over four. Furthermore, an increase of one unit in 'net margin' decreases the odds of default by 70%, which is more consistent with this variable. Regarding the other coefficients, an increase of one unit in the 'real estate turnover' ratio decreases the odds of default by almost 12%, whereas an increase of one unit in the 'exploitation margin' ratio decreases the odds of default by 68%. In this second model, we have approximately the same results as before, except for 'net margin', which has the opposite effect to that in the first model.
+
+These are also ratio or margin variables here. An increase of one unit does not correspond to a 1% increase. This explains why the increases and decreases in odds are so high.
+
+#### Lasso ROC Curves
+
+```{r}
+# Lasso full
+
+plot(roc_obj_lasso_full, 
+     add = F, 
+     main = "ROC Curve All models", 
+     xlab="Specificity",
+     ylab="Sensitivity", 
+     col = "darkorange")
+
+# Lasso Ratio
+
+plot(roc_obj_lasso_ratio, 
+     add = T,
+     xlab="Specificity",
+     ylab="Sensitivity", 
+     col = "darkred")
+
+abline(0,1)
+legend("bottomright", legend = c("Lasso Model (Full)",
+                                 "Lasso Model (Ratio)"),
+       col = c("darkorange","darkred"), lwd = 2)
+
+
+```
+
+Looking at the two ROC curves, there isn't much difference. We can see that the full model's ROC curve is above the reduced one, but the difference is not huge. Looking at the specificity, we can see that the two models seem to estimate the false positives similarly, but the full model estimates the true positives slightly better, as can be seen from the sensitivity.
+
+#### Lasso AUC Results
+
+```{r}
+
+result_lasso <- tibble(Model = c("Lasso Full", "Lasso Ratio"),
+                       `n Variables` = c(lasso_final_full$df, lasso_final_ratio$df),
+                       AUC_Training = c(round(AUC_train_full,4), round(AUC_train_ratio,4)),
+                       AUC_Validation = c(round(best_auc_full,4), round(best_auc_ratio, 4)),
+                       AUC_Test = c(round(auc_test_lasso_full,4), round(auc_test_lasso_ratio,4)),
+                       lambda = c(round(best_lambda_full,4), round(best_lambda_ratio,4)))
+
+
+stargazer(result_lasso, type = "text", summary = F, rownames = F, title = "Comparing Models")
+```
+
+Comparing the AUC of the 2 lasso models, we can see that although the full model has a higher AUC than the ratio model, the difference is not very high for a model with 47 variables compared to one with only 13. We might assume that a company's default is closely linked to the ratios we computed in the ratio model, since, as we saw before, these were the variables with the greatest impact. Moreover, considering we can have a lot of NAs, we may prefer to use model the simpler model if the loss in AUC is not too large. We do not choose yet and keep it for the section where we compare all of our models.
+
+### Section 2.2 Decision trees
+
+#### First look on different size trees
+
+At first, we use a very simple approach for our trees, we just take 3 different size, compare them on a validation set. After, we use a more complex approach that we will explain later.
+
+```{r}
+#| message: false
+#Because we dropped some variables on the lasso we retake the dataframe
+DF_WINS <- read_csv("data/processed/DF_WINS.csv")
+```
+
+```{r}
+#| message: false
+#| warning: false
+set.seed(31)
+
+id_vars <- c("siren", "date_cloture_exercice")
+
+DF_WINS <- DF_WINS %>%
+  mutate(year = as.integer(format(date_cloture_exercice, "%Y")))
+
+training_set <- DF_WINS %>% filter(year <= 2019)
+validation_set <- DF_WINS %>% filter(year == 2020)
+testing_set  <- DF_WINS %>% filter(year == 2021)
+
+train_tree <- training_set %>%
+  dplyr::select(-all_of(id_vars), -year) %>%
+  mutate(default_event = factor(
+    ifelse(default_event == 1, "Default", "Healthy"),
+    levels = c("Healthy", "Default")
+  ))
+
+#We construct a small, an intermediate and a large tree.
+#Small
+tree_sma <- rpart(
+  default_event ~ .,
+  data = train_tree,
+  method = "class",
+  control = rpart.control(maxdepth = 1)
+)
+
+prp(
+  tree_sma, type = 2, extra = 4, fallen.leaves = TRUE, digits = 3,
+  box.col = c("#177245", "#B31B1B")[tree_sma$frame$yval],
+  node.fun = function(x, labs, digits, varlen)
+    paste(labs, "\nD/H:",
+          x$frame$yval2[, 3], "-", x$frame$yval2[, 2])
+)
+
+#Intermediate
+tree_int <- rpart(default_event ~ ., data = train_tree, method = "class",
+                    control = rpart.control(cp = 0.01, minsplit = 15))
+
+
+prp(tree_int, type = 2, extra = 4, fallen.leaves = TRUE, digits = 3,
+    box.col = c("#177245", "#B31B1B")[tree_int$frame$yval],
+    node.fun = function(x, labs, digits, varlen) {
+      n_total <- x$frame$n                    
+      paste0(labs, "\n",
+             "Total: ", n_total, "\n",
+             "Y = 0/ Y  =1 : ", x$frame$yval2[,2], " - ", x$frame$yval2[,3])
+    })
+
+#Large
+tree_lar <- rpart(default_event ~ ., data = train_tree, method = "class",
+                    control = rpart.control(cp = 0, minsplit = 2))
+
+
+
+prp(tree_lar, type = 2, extra = 4, fallen.leaves = TRUE, digits = 3,
+    box.col = c("#177245", "#B31B1B")[tree_lar$frame$yval],,
+    node.fun = function(x, labs, digits, varlen) {
+      n_total <- x$frame$n                    
+      paste0(labs, "\n",
+             "Total: ", n_total, "\n",
+             "Y = 0/ Y  =1 : ", x$frame$yval2[,2], " - ", x$frame$yval2[,3])
+    })
+
+
+# we use rpart.control which controls the size of the tree, cp is the complexity parameter, if cp = 0 it means that we do not limit the growth of the tree and for minsplit, which is the minimum number of observations required in a node to do a new split so if minsplit = 2, it is very low therefore the tree can create leaf with very low number of observations.
+
+#We test AUC that each choice of parameters yield on validation set 
+validation <- validation_set %>%
+  dplyr::select(-all_of(id_vars), -year)
+
+testing <- testing_set %>% 
+  dplyr::select(-all_of(id_vars), -year)
+
+labels_train <- training_set$default_event
+
+labels_valid<- validation_set$default_event
+
+labels_test <- testing_set$default_event
+
+#We create our prediction objects
+
+#Small
+sma_pred <- predict(tree_sma, newdata = validation, type = "prob")[, "Default"]
+pred_sma <- ROCR::prediction(sma_pred, labels_valid)
+#Intermediate
+int_pred <- predict(tree_int, newdata = validation, type = "prob")[, "Default"]
+pred_int <- ROCR::prediction(int_pred, labels_valid)
+#Large
+lar_pred <- predict(tree_lar, newdata = validation, type = "prob")[, "Default"]
+pred_lar <- ROCR::prediction(lar_pred, labels_valid)
+
+#We create our performance objects
+#Small
+perf_sma <- ROCR::performance(pred_sma, "tpr", "fpr")
+auc_sma <- ROCR::performance(pred_sma, "auc")@y.values[[1]]
+#Intermediate
+perf_int <- ROCR::performance(pred_int, "tpr", "fpr")
+auc_int <- ROCR::performance(pred_int, "auc")@y.values[[1]]
+#Large
+perf_lar <- ROCR::performance(pred_lar, "tpr", "fpr")
+auc_lar <- ROCR::performance(pred_lar, "auc")@y.values[[1]]
+
+#We plot them
+plot(perf_sma,
+     main = "ROC curves Decision trees (Validation set)",
+     xlab = "1 − Specificity",
+     ylab = "Sensitivity",
+     col = "#FF8C00",
+     lwd = 2)
+
+abline(0, 1, lty = 2)
+plot(perf_int, add = T, col = "#AF4035", lwd = 2)
+plot(perf_lar, add = T, col = "#0077BE", lwd = 2)
+
+legend(
+  "bottomright",
+  legend = c(
+    paste0("Small (AUC = ", round(auc_sma, 3), ")"),
+    paste0("Intermediate (AUC = ", round(auc_int, 3), ")"),
+    paste0("Large (AUC = ", round(auc_lar, 3), ")")
+  ),
+  col = c("#FF8C00", "#AF4035", "#0077BE"),
+  lwd = 2
+)
+
+
+```
+
+First, the small decision tree, which is restricted to a single split, relies on the variable GF, related to total operating expenses. Despite its simplicity, this model achieves an AUC of 81.8% on the validation set.
+
+Second, an intermediate decision tree is estimated, whose size is controlled through two parameters. The complexity parameter is set to cp = 0.01, requiring that any additional split leads to a sufficiently large reduction in classification error. In addition, the minimum number of observations required to attempt a split is fixed at minsplit = 15. This intermediate tree achieves an AUC of 86.6% on the validation set.
+
+Finally, a large decision tree is estimated using the same parameters, but with fewer restrictions on the complexity parameter and on the minimum number of observations required to create a new one. This model yields an AUC of 82.4%, which is lower than that of the intermediate tree.
+
+Overall, among the three decision trees, the intermediate-sized decision tree provides the best discriminatory performance on the validation set, as indicated by the highest AUC. It could be that this intemediate tree is the optimal trade-off between underfitting and overfitting the data.
+
+We can see that parameters affect relatively strongly the performance of the model (measured by AUC). Hence, we use a more complete approach where we build a grid of different parameters value. Then, we loop of each combination, we store their respective AUC and select the combination that yields the best performance (the highest AUC). We control 2 parameters: the complexity parameter and the minsplit one. As usual, once we obtained the best combination of parameters, we refit the best tree on training+validation set and we predict it on the testing set. In total, we test for 56 different combination.
+
+#### Selection using grid of parameters
+
+```{r}
+#| warning: false
+#We create the grid of parameters
+cp_grid <- c(0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05)
+minsplit_grid <- c(5, 10, 15, 20, 30, 40, 50, 100)
+
+
+param_grid <- expand.grid(
+  cp = cp_grid,
+  minsplit = minsplit_grid
+)
+
+#We have the sets
+DF_WINS <- DF_WINS %>%
+  mutate(year = as.integer(format(date_cloture_exercice, "%Y")))
+
+training_set <- DF_WINS %>% filter(year <= 2019)
+validation_set <- DF_WINS %>% filter(year == 2020)
+testing_set  <- DF_WINS %>% filter(year == 2021)
+
+training_tree <- training_set %>%
+  dplyr::select(-all_of(id_vars), -year) %>%
+  mutate(default_event = factor(
+    ifelse(default_event == 1, "Default", "Healthy"),
+    levels = c("Healthy", "Default")
+  ))
+
+
+validation <- validation_set %>%
+  dplyr::select(-all_of(id_vars), -year)
+
+testing <- testing <- testing_set %>% 
+  dplyr::select(-all_of(id_vars), -year)
+
+
+#We create our loop
+
+results_list <- vector("list", nrow(param_grid))
+
+for (i in seq_len(nrow(param_grid))) {
+
+  #We extract parameters
+  cp_i <- param_grid$cp[i]
+  minsplit_i <- param_grid$minsplit[i]
+
+  #We fit the tree on training set
+  tree_i <- rpart(
+    default_event ~ .,
+    data = train_tree,
+    method = "class",
+    control = rpart.control(
+      cp = cp_i,
+      minsplit = minsplit_i
+    )
+  )
+
+  #We get the prediction objects on validation set
+  pred_i <- predict(tree_i, newdata = validation, type = "prob")[, "Default"]
+
+  pred_obj_i <- ROCR::prediction(pred_i, labels_valid)
+
+  #We get our perfomance objects
+  perf_i <- ROCR::performance(pred_obj_i, "tpr", "fpr")
+  auc_i  <- ROCR::performance(pred_obj_i, "auc")@y.values[[1]]
+
+  #We store everything
+  results_list[[i]] <- list(
+    cp = cp_i,
+    minsplit = minsplit_i,
+    tree = tree_i,
+    perf = perf_i,
+    auc = auc_i
+  )
+}
+results_df <- tibble(
+  cp = sapply(results_list, `[[`, "cp"),
+  minsplit = sapply(results_list, `[[`, "minsplit"),
+  auc = round(sapply(results_list, `[[`, "auc"),4)
+) %>%
+  arrange(desc(auc)) %>% head(5)
+
+stargazer(results_df, type = "text", summary = F, rownames = F)
+
+```
+
+Here, we only displayed the 5 first rows of the summary table. And we obtained that among the the trees created, the highest AUC on the validation test is equals to approximately 92,61% with a cp = 5e-04 and a minsplit = 30. We can interpret the results as showing that a low level for the cp parameters allows new splits to be created without incurring too much penalty. At the same time, a high level for the minsplit parameter requires enough observations to create a new split for the tree. We can conclude that achieving a high AUC on the validation set allows the tree to grow, but requires a sufficient number of observations to create new split. To some extent, the latter parameter avoid overfitting the data.
+
+After identifying, on the validation set, the combination of parameters that yields the highest AUC, we retrain the corresponding decision tree on the combined training and validation set and then evaluate its performance on the testing set by plotting its ROC curve.
+
+```{r}
+#We get our best parameters by selecting the first row because we arrange the table in descending order
+best_cp <- results_df[1,]$cp
+best_minsplit <- results_df[1,]$minsplit
+best_auc_valid <- results_df[1,]$auc
+
+#Know, we need to refit the tree on training+validation set:
+train_val_set <- DF_WINS %>% filter(year<=2020)
+training_validation <- train_val_set %>% 
+   dplyr::select(-all_of(id_vars), -year)
+train_val_tree <- train_val_set %>% dplyr::select(-all_of(id_vars), -year) %>%
+  mutate(default_event = factor(
+    ifelse(default_event == 1, "Default", "Healthy"),
+    levels = c("Healthy", "Default")
+  ))
+
+labels_train_val <- training_validation$default_event
+
+best_tree<- rpart(
+  default_event ~ .,
+  data = train_val_tree,
+  method = "class",
+  control = rpart.control(
+    cp = best_cp,
+    minsplit = best_minsplit
+  )
+)
+
+#We create our performance object on sample (training + validation) and testing set with our best tree.
+#We first need its prediction object:
+#train + val
+best_tree_pred_trainval <- predict(best_tree, newdata = training_validation, type = "prob")[, "Default"]
+pred_best_tree_trainval <- ROCR::prediction(best_tree_pred_trainval, labels_train_val)
+
+#test:
+best_tree_pred_test <- predict(best_tree, newdata = testing, type = "prob")[, "Default"]
+pred_best_tree_test <- ROCR::prediction(best_tree_pred_test, labels_test)
+
+#Then performance objects
+#train + val
+perf_best_tree_trainval <- ROCR::performance(pred_best_tree_trainval, "tpr", "fpr")
+auc_best_tree_trainval  <- ROCR::performance(pred_best_tree_trainval, "auc")@y.values[[1]]
+
+
+#test:
+perf_best_tree_test <- ROCR::performance(pred_best_tree_test, "tpr", "fpr")
+auc_best_tree_test  <- ROCR::performance(pred_best_tree_test, "auc")@y.values[[1]]
+
+#Finally, we plot the best model (testing set)
+plot(
+  perf_best_tree_test,
+  main = paste0("ROC curve - Best tree (testing set) - CP:", best_cp," / Minsplit:",best_minsplit),
+  xlab = "1 − Specificity",
+  ylab = "Sensitivity",
+  col = "#ECD540",
+  lwd = 2
+)
+abline(0, 1, lty = 2)
+
+legend(
+  "bottomright",
+  legend = c(
+    paste0("Best tree (AUC = ", round(auc_best_tree_test, 3))
+  ),
+  col = c("#ECD540"),
+  lwd = 2
+)
+
+
+```
+
+For the best tree (cp = 5e-04 and a minsplit = 30) we get an AUC of 88.2% on the testing set. With the following code, we get the visualization of the "best tree", tree that yields the highest AUC on the validation set among 56 difffent trees.
+
+```{r}
+#| warning: false
+prp(
+  best_tree, type = 2, extra = 4, fallen.leaves = TRUE, digits = 3,
+  box.col = c("#177245", "#B31B1B")[tree_sma$frame$yval],
+  node.fun = function(x, labs, digits, varlen)
+    paste(labs, "\nD/H:",
+          x$frame$yval2[, 3], "-", x$frame$yval2[, 2])
+)
+```
+
+We can see that the tree's structure appears consistent with the chosen parameters. The relatively large depth of the tree reflects the low value of the complexity parameter. At the same time, the number of splits remains limited compared to the large tree presented earlier in the decision tree section, earlier reflecting the constraint imposed by minsplit = 30.
+
+#### Pruning
+
+Since we already did a grid search for the parameters, we don"t do a pruned tree. Also, we could not use the printcp() function because it does a random cross-validation, which does not work with panel data. Therefore it would require a more complex approach, outside of the scope of our analysis.\
+
+### Section 2.3 Gradient Boosting
+
+The following code allows us to test the GBM model using several combinations of six different parameters inluding the number of boosting iterations (the number of trees), the learning rate, the depth of each tree, minimum child weight, susbsample ratio and column subsample ratio.
+
+According to <https://xgboost.readthedocs.io/en/stable/parameter.html#parameters-for-tree-booster,>
+
+-   Learning rate (eta) : corresponds to the step size shrinkage for each new tree.
+
+-   Depth of each tree (max_depth): corresponds to the maximum size of the tree, as the tree depth increases, this could lead to a more complex model and more risk of over fitting.
+
+-   Minimum child weight (min_child_weight): controls the minimum sum of instance weights (similar to observation counts) required in a child node for a split to be allowed (reduce the risk of overfitting).
+
+-   Subsample ratio (subsample): controls for the fraction of the training observations used to grow each tree.
+
+-   Column subsample ratio (colsample_bytree): defines the fraction of features ( columns) considered when construction each tree.
+
+Firstly, the model is tested on the validation set for all possible combinations in order to select the combination of parameters that yields the highest AUC. Secondly, once the best combination has been found, the model is retrained on the training set + validation set and finally assessed on the testing set using a ROC curve, as done earlier in the decision tree Section.
+
+First we drop the constant variables. We know from LDA that BM and CG are constant.
+
+```{r}
+data <- INPI_ratios %>% dplyr::select(-c(BM,CG)) %>% 
+   mutate(year = as.integer(format(date_cloture_exercice, "%Y"))) %>%
+  mutate(across(where(is.character), as.factor))
+```
+
+Now, we run the following code to select the best gradient boosting model, using XGBoost for efficiency.
+
+For each parameter combination, an XGBoost model is trained on the training set. The model’s predictive performance is assessed on the validation set by computing the AUC. The validation AUC for each model is stored alongside the corresponding parameters to identify the best model among a total of 540 different models.
+
+```{r}
+set.seed(31)
+
+# Train/Validation/Test split
+train <- data %>% dplyr::filter(year < 2020)
+validation <- data %>% dplyr::filter(year == 2020)
+test <- data %>% dplyr::filter(year == 2021)
+
+drop_cols <- c("default_event", "date_cloture_exercice", "year", "siren")
+train_clean <- train %>% dplyr::select(-dplyr::all_of(drop_cols))
+valid_clean <- validation %>% dplyr::select(-dplyr::all_of(drop_cols))
+test_clean  <- test %>% dplyr::select(-dplyr::all_of(drop_cols))
+
+train_matrix <- model.matrix(~ . - 1, data = train_clean)
+valid_matrix <- model.matrix(~ . - 1, data = valid_clean)
+test_matrix  <- model.matrix(~ . - 1, data = test_clean)
+
+#Need to put labels in numeric for the latest XGBoost version
+labels_train <- as.numeric(train$default_event)
+labels_valid <- as.numeric(validation$default_event)
+labels_test  <- as.numeric(test$default_event)
+
+
+# Create DMatrix  for the new version of the package 
+dtrain <- xgboost::xgb.DMatrix(data = train_matrix, label = labels_train)
+dvalid <- xgboost::xgb.DMatrix(data = valid_matrix, label = labels_valid)
+dtest  <- xgboost::xgb.DMatrix(data = test_matrix,  label = labels_test)
+
+# Parameters grid to test 
+param_grid <- expand.grid(
+  eta = c(0.01, 0.05, 0.1, 0.3),
+  max_depth = c(3, 6, 9, 12, 15),
+  min_child_weight = c(1, 3, 5),
+  subsample = c(0.6, 0.8, 1.0),
+  colsample_bytree = c(0.6, 0.8, 1.0),
+  nrounds = 500
+)
+
+results_list <- vector("list", nrow(param_grid))
+results_df <- data.frame()
+
+cat("Starting grid search for", nrow(param_grid), "combinations. This can take some time (should be < 10 min)")
+
+for (i in 1:nrow(param_grid)) {
+
+  # With the new version, we  use xgb.train
+  params <- list(
+    objective = "binary:logistic",
+    eval_metric = "auc",
+    eta = param_grid$eta[i],
+    max_depth = param_grid$max_depth[i],
+    min_child_weight = param_grid$min_child_weight[i],
+    subsample = param_grid$subsample[i],
+    colsample_bytree = param_grid$colsample_bytree[i]
+  )
+
+  xgb_model <- xgboost::xgb.train(
+    params = params,
+    data = dtrain,
+    nrounds = param_grid$nrounds[i],
+    verbose = 0
+  )
+
+  pred_valid <- predict(xgb_model, dvalid)
+  auc_valid <- ROCR::performance(ROCR::prediction(pred_valid, labels_valid), "auc")@y.values[[1]]
+
+  results_list[[i]] <- list(model = xgb_model, auc = auc_valid)
+  results_df <- rbind(results_df, cbind(param_grid[i, ], AUC_valid = auc_valid))
+}
+
+results_df <- results_df %>%
+  dplyr::arrange(dplyr::desc(AUC_valid)) %>%
+  head(5)
+
+stargazer::stargazer(results_df, type = "text", summary = FALSE, rownames = FALSE)
+```
+
+From the results obtained, we report the five best-performing models those with the highest validation AUC out of the 540 estimated XGBoost .
+
+```{r}
+cat("The highest validation AUC:", round(results_df[1,]$AUC_valid, 4),"\n\nWe obtain the following best parameters:\n\nLearning_rate (eta):", round(results_df[1,]$eta, 4), "\nMax_depth: ", round(results_df[1,]$max_depth, 4),"\nmin_child_weight: ", round(results_df[1,]$min_child_weight, 4), "\nsubsample: ",round(results_df[1,]$subsample, 4), "\ncolsample_bytree: ", round(results_df[1,]$colsample_bytree, 4), "\nnrounds: ", round(results_df[1,]$nrounds, 4))
+```
+
+```{r}
+set.seed(31)
+#We take the best combinaison of parameters with the highest AUC and we refit the model on the training+ validation set
+
+#Since we arranged results_df in descending order, the best parameters are just the 1st row.
+
+best_params <- results_df[1,] %>% dplyr::select(-AUC_valid)
+
+train_val <- dplyr::bind_rows(train, validation)
+
+train_val_clean <- train_val %>% dplyr::select(-all_of(drop_cols))
+
+train_val_matrix <- model.matrix(~ . - 1, data = train_val_clean)
+
+X_train_val <- train_val_matrix
+
+y_train_val <- as.numeric(train_val$default_event)
+
+dtrain_val <- xgboost::xgb.DMatrix(
+  data = X_train_val,
+  label = y_train_val
+)
+
+best_xgb <- xgboost::xgb.train(
+  params = list(
+    objective = "binary:logistic",
+    eta = best_params$eta,
+    max_depth = best_params$max_depth,
+    min_child_weight = best_params$min_child_weight,
+    subsample = best_params$subsample,
+    colsample_bytree = best_params$colsample_bytree,
+    eval_metric = "auc"
+  ),
+  data = dtrain_val,
+  nrounds = best_params$nrounds,
+  verbose = 0
+)
+
+#We now test the model on the Testing set + ROC curve
+pred_test_xgb <- predict(best_xgb, test_matrix)
+
+pred_xgb_test <- ROCR::prediction(pred_test_xgb, labels_test)
+perf_xgb_test <- ROCR::performance(pred_xgb_test, "tpr", "fpr")
+auc_xgb_test  <- ROCR::performance(pred_xgb_test, "auc")@y.values[[1]]
+
+cat("Best XGBoost Test AUC: ", round(auc_xgb_test, 4), "\n")
+
+plot(perf_xgb_test,
+     main = "ROC Curve - Best XGBoost (Test)",
+     xlab = "1 − Specificity",
+     ylab = "Sensitivity",
+     col  = "#560319",
+     lwd  = 2)
+abline(0, 1, lty = 2)
+legend("bottomright",
+       legend = paste0("XGBoost (AUC = ", round(auc_xgb_test, 4), ")"),
+       col = "#560319", lwd = 2)
+```
+
+After identifying the best combination of parameters on the validation set, we refit the model using this optimal specification on the combined training and validation samples. The model is then evaluated on the testing set, where it achieves an AUC of 95.8%.
+
+Finally, we have decided to add the feature importance by using the xgb.importance function to identify the variables that contribute most to the XGBoost model. The top 20 most important features are then displayed using xgb.plot.importance.
+
+```{r}
+# Variable importance
+importance_matrix <- xgb.importance(model = best_xgb, 
+                                    feature_names = colnames(train_matrix))
+
+#Plot top 20 most important features
+xgb.plot.importance(importance_matrix[1:min(20, nrow(importance_matrix)), ], 
+                    main = "Top 20 Most Important Features")
+```
+
+The three most important variables (CO, GF, 1A) correspond respectively to: “Total de l'actif” “Total des charges d'exploitation” and “Immobilisations incorporelles”.
+
+### Section 2.4 : Summary Models
+
+#### ROC and AUC
+
+This section provides a clearer comparison across the five models estimated in the analysis, including Linear Discriminant Analysis, Lasso (full set of variables), Lasso (ratios only), Decision Tree, and XGBoost. First, the following code builds a summary table reporting the AUC on the testing set for each model. Then, it overlays the ROC curves of all models on the same plot on the testing set to visually compare their performance in terms of AUC.
+
+```{r}
+summary <- tibble(Model = c("LDA","Lasso Full", "Lasso Ratio", "Decision Tree", "XGboost"), AUC_test = round(c(auc_lda_test,auc_test_lasso_full, auc_test_lasso_ratio, auc_best_tree_test, auc_xgb_test),4)) %>% 
+  arrange(desc(AUC_test))
+
+
+stargazer(summary, summary = F, type = "text", rownames = F, title = "summary of all models")
+
+plot(perf_xgb_test,
+     main = "ROC Curves - All Models (On Testing set)",
+     xlab = "1 − Specificity",
+     ylab = "Sensitivity",
+     col = "#3C1414",
+     lwd = 2)
+abline(0, 1, lty = 2)
+plot(perf_lda_test, add = T, col = "#177245", lwd =2)
+plot(roc_obj_lasso_full, add = T, col = "#FFA812", lwd = 2)
+plot(roc_obj_lasso_ratio, add = T, col = "#DC143C", lwd = 2)
+plot(perf_best_tree_test, add = T, col = "#986960", lwd = 2)
+
+legend_labels <- paste0(summary$Model, " - AUC: ", summary$AUC_test)
+
+legend("bottomright",
+       legend = legend_labels,
+       col = c("#3C1414",
+               "#986960","#FFA812",
+               "#DC143C", "#177245"),
+       lwd = 2)
+```
+
+According to the table and the plot of all the ROC curves, we can clearly see that among all the 5 five models tested, the model with the best performance on the testing set is the XGboost, with the following parameters :
+
+```{r}
+cat("Learning_rate (eta):", round(results_df[1,]$eta, 4), "\nMax_depth: ", round(results_df[1,]$max_depth, 4),"\nmin_child_weight: ", round(results_df[1,]$min_child_weight, 4), "\nsubsample: ",round(results_df[1,]$subsample, 4), "\ncolsample_bytree: ", round(results_df[1,]$colsample_bytree, 4), "\nnrounds: ", round(results_df[1,]$nrounds, 4))
+```
+
+## Section 3 Conclusion
+
+The aim of this credit scoring project is to assess the performance of several machine learning models to predict the default of companies using a data-analysis approach. The project comprises three main parts: data collection, data exploration, and finally data analysis. Our project relies on three different databases: BODACC data to identify defaulting and non-defaulting companies; INPI data to collect financial data of each company; and NAF data to gain insight into each company's sector of activity. For this credit scoring project, we have decided to focus our analysis on the "Accommodation and catering" sector from 2017 to 2021. According to economic literature, this sector was considered the most impacted by the pandemic, resulting in a significant drop in cash flows. However, we found that this sector received substantial financial support from the French government. The interaction between the pandemic and this heavily impacted sector makes the study even more interesting to analyze.
+
+For the data exploration stage, we decided to plot various graphs to familiarize ourselves with the data and potentially discover initial relationships between the default event and financial variables. During this process, we discovered that several variables had many extreme and missing values. Therefore, we retained the top 5% of non-defaulting firms with the fewest missing values, dropped variables with more than 25% missing observations and imputed the remaining missing data using medians. We also winsorised the variables (5th-95th percentile). Additionally, bivariate plots showed that higher turnover is associated with lower default, while longer customer credit durations (in days) are associated with a higher default probability.
+
+We also conducted a Principal Component Analysis (PCA), but unfortunately this did not produce a good enough score to distinguish between the two classes. However, we conducted a Linear Discriminant Analysis (LDA) and achieved good performance on the validation set, with an Area Under the Curve (AUC) of 75.8%.
+
+Finally, our project also involved data analysis, for which we trained and assessed several models: Lasso (full set of variables), Lasso (ratios only), Decision Tree and XGBoost. We always trained our models on a training set, select our parameters on the validation set, retrain the model with the selected parameters on the merged training and validation set, then we test the models on a testing set.
+
+Firstly, we estimated two Lasso models: one containing all the financial variables and another containing only the financial variables we created (mostly the ratios). We used the validation set to select the optimal penalty parameters for these models. Both models performed well on the testing set (AUC = 0.85 for the full model and = 0.824 for the ratio-only model). The data analysis section also involved decision tree models. We created a loop to test several combinations of parameters (cp and minsplit) and selected the best one (higher AUC), and we get an AUC with the best combinaison on the testing set of 88.23%.
+
+Finally, we estimated an XGBoost model. Here, we created a loop to test all possible combinations of six different parameters, including the number of boosting iterations, the learning rate, the depth of each tree, minimum child weight, subsample ratio, and column subsample ratio. This resulted in 540 different models. Using the validation set, we selected the combination of parameters that yielded the highest AUC, and after retraining the model on training and validation set, we tested the model on the testing set, achieving an AUC of 95.8%.
+
+In conclusion, the XGboost model is the most performant, with an AUC of 95.8%.
+
+However, despite these strong predictive results, limitations should be acknowledged. Due to our significant data imbalance, ROC-AUC can be misleading. For instance, a model may allocate slightly higher risk scores to firms that default than to those that do not (yielding a high ROC-AUC), yet still predict that almost all firms will not default. Consequently, there are very few detected defaults, resulting in poor practical usefulness. Therefore, including other metrics in our analysis could greatly improve it.
+
+# References

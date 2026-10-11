@@ -1,0 +1,1970 @@
+---
+title: "Econometrics method"
+author: "Baptiste Messant and Victoria Godio"
+format: html
+editor: visual
+toc: true   
+code-fold: true
+theme: cosmo
+---
+
+## Exercise 1 : Estimation of a censored model
+
+*In this exercise, we estimate a Generalized Tobit model using the dataset on labor-force participation and wages of married women from Mroz (1987). The dataset contains information on the labor supply, demographics, and family characteristics of married women, as well as their husbands’ characteristics.*
+
+Pre-requisite : Load the packages and the data
+
+```{r}
+
+pkgs <- c(
+  "readr",
+  "broom",
+  "margins",
+  "dplyr",
+  "nloptr",
+  "broom",
+  "knitr",
+  "tidyr",
+  "numDeriv"
+  )
+
+to_install <- setdiff(pkgs, rownames(installed.packages()))
+if (length(to_install) > 0) {
+  install.packages(to_install, dependencies = TRUE)
+}
+
+invisible(lapply(pkgs, function(p) {
+  suppressPackageStartupMessages(library(p, character.only = TRUE))
+}))
+
+
+```
+
+```{r}
+
+#LOAD THE DATA - CHANGE THE PATH JUST HERE
+
+mroz <- read_delim("C:/Users/Victoria/Downloads/Mroz.csv", 
+    delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+View(mroz)
+
+any(is.na(mroz))
+#There are not NAs in the data mroz
+
+# We transform the varaible wage, hwage and mtr into numeric variable 
+
+vars <- c("mtr", "hwage", "wage")
+
+mroz[vars] <- lapply(mroz[vars], function(x) {
+  as.numeric(gsub(",", ".", x))
+})
+
+```
+
+*Below is a summary of the variables used in the analysis.*
+
+## Variable Summary
+
+| Variable | Description |
+|------------------------------------|------------------------------------|
+| `lfp` | Dummy variable = 1 if woman worked in 1975, 0 otherwise |
+| `hours` | Wife’s hours of work in 1975 |
+| `kidsl6` | Number of children under 6 years old in the household |
+| `kids618` | Number of children aged 6–18 in the household |
+| `age` | Wife’s age |
+| `educ` | Wife’s educational attainment (years of schooling) |
+| `wage` | Wife’s 1975 average hourly earnings (in 1975 dollars) |
+| `wage76` | Wife’s wage reported at 1976 interview (for 1976) |
+| `hhours` | Husband’s hours worked in 1975 |
+| `hage` | Husband’s age |
+| `heduc` | Husband’s educational attainment (years of schooling) |
+| `hwage` | Husband’s wage in 1975 dollars |
+| `faminc` | Family income in 1975 dollars |
+| `mtr` | Marginal tax rate faced by the wife, including Social Security taxes |
+| `mothereduc` | Wife’s mother’s years of education |
+| `fathereduc` | Wife’s father’s years of education |
+| `unemployment` | Unemployment rate in the county of residence |
+| `bigcity` | Dummy variable = 1 if living in a large city (SMSA), 0 otherwise |
+| `exper` | Actual years of wife’s previous labor market experience |
+
+**Econometric Model**
+
+Let the latent selection index be defined as:
+
+$$
+d_i^* = z_i^\top \gamma, \quad
+d_i = 1 \text{ if } d_i^* > 0
+$$
+
+and the wage equation (observed only when $d_i = 1$) be:
+
+$$
+y_i \equiv \ln(\text{wage}_i) = x_i^\top \beta + \varepsilon_i, \quad \text{observed if } d_i = 1.
+$$
+
+Assume that $(u_i, \varepsilon_i)$ are jointly normally distributed with
+
+$$
+\mathbb{E}[u_i] = \mathbb{E}[\varepsilon_i] = 0, \quad
+\text{Var}(u_i) = 1, \quad
+\text{Var}(\varepsilon_i) = \sigma^2, \quad
+\text{Corr}(u_i, \varepsilon_i) = \rho.
+$$
+
+In the first step, we choose the explanatory variables as:
+
+$$
+z = (\text{kidsl6}, \text{kids618}, \log(\text{hwage})), \quad
+x = (\text{exper}, \text{educ}, \text{bigcity}).
+$$
+
+## 1. Data preparation and descriptive analysis
+
+(a) *Report the counts by* $di$ *=* $lfpi$ *and summary statistics for wages among workers. Compare with Table III of the paper*
+
+    For this question, we have first to count the number of women that works `lfp = 1` and the number of women that do not work `lfp = 0` in 1975. Then we will summary the statistics for wages among working women.
+
+    ```{r}
+
+    # Number of women that work and do not work
+    count_lfp <- table(mroz$lfp)
+
+    # Proportions in percentage
+    prop_lfp <- round(prop.table(count_lfp) * 100, 3)
+
+    # Total sample size
+    N_total <- sum(count_lfp)
+
+    # Display the results properly in sentances
+    cat("Labor force participation in the sample:\n\n")
+
+    cat(
+      "Out of", N_total, "married women in the sample,",
+      count_lfp["1"], "participate in the labor force (lfp = 1),",
+      "representing", prop_lfp["1"], "% of the sample.\n"
+    )
+
+    cat(
+      count_lfp["0"], "women do not participate in the labor force (lfp = 0),",
+      "which corresponds to", prop_lfp["0"], "% of the sample.\n"
+    )
+
+
+
+    #Descriptive statistics for the wages among the women that worked 
+
+    library(dplyr)
+    library(knitr)
+
+    mroz_working <- mroz %>% filter(lfp == 1)
+
+    # Convert in the column wage comma by point(numeric)
+    mroz_working$wage <- as.numeric(gsub(",", ".", mroz_working$wage))
+
+
+    summary_table <- data.frame(
+      Statistic = c(
+        "Number of working women (lfp = 1)",
+        "Mean wage",
+        "Standard deviation of wage",
+        "Minimum wage",
+        "1st quartile",
+        "Median wage",
+        "3rd quartile",
+        "Maximum wage"
+      ),
+      Value = c(
+        nrow(mroz_working),
+        mean(mroz_working$wage),
+        sd(mroz_working$wage),
+        min(mroz_working$wage),
+        unname(quantile(mroz_working$wage, 0.25)),
+        median(mroz_working$wage),
+        unname(quantile(mroz_working$wage, 0.75)),
+        max(mroz_working$wage)
+      )
+    )
+
+    kable(summary_table, digits = 2,
+          caption = "Descriptive statistics of the variable wage for working women")
+
+    ```
+
+(b) *Plot the distribution of* `hours` *and of* `ln(wage)` *for workers.*
+
+    ```{r}
+
+    #Plot the distribution of hours, a quantitative variable
+
+    hist(mroz_working$hours, probability = TRUE, col = "lightblue",
+         main = "Figure 1 : Histogram with Density of Hours Worked", xlab = "Hours Worked")
+    lines(density(mroz_working$hours), col = "red", lwd = 2)
+
+
+    #Plot the distribution of ln(wage)
+    #First we have to create log(wage)
+    mroz_working$ln_wage <- log(mroz_working$wage)
+
+
+    hist(mroz_working$ln_wage,
+         probability = TRUE,
+         col = "lightblue",
+         main = "Figure 2 : Histogram with Density of ln(wage)",
+         xlab = "ln(wage)",
+         ylim = c(0, 0.8))
+
+    lines(density(mroz_working$ln_wage), col = "red", lwd = 2)
+
+
+
+    ```
+
+(c) *Discuss plausible exclusion restrictions for identification. Justify briefly from economic reasoning.*
+
+    See the report
+
+## 2. Baseline Models
+
+(a) *Estimate OLS of* $ln(wage)$ *on* $xi$ *using the working subsample. Interpret coefficients.*
+
+    ```{r}
+
+    # Estimate OLS of ln(wage), with exper, educ and bigcity variables
+    model_OLS <- lm(ln_wage ~ exper + educ + bigcity, data = mroz_working)
+
+
+    tidy(model_OLS) %>%
+      mutate(across(where(is.numeric), ~ round(.x, 4)))
+
+    ```
+
+*b. Estimate a Probit for participation* $di$ *on* $zi$*. Report average partial effects (APEs), try to propose some measures of fit.*
+
+```{r}
+
+
+# Probit Model with lfp on kidsl6, kids618, log(hwage)
+# No NAs in the data 
+
+
+mroz$log_hwage <- log(mroz$hwage)
+
+model_probit <- glm(lfp ~ kidsl6 + kids618 + log_hwage,
+                    family = binomial(link = "probit"),
+                    data = mroz)
+
+# OLS table rounded to 4 decimals
+library(broom)
+tidy(model_probit) |>
+  dplyr::mutate(dplyr::across(where(is.numeric), ~ round(.x, 4)))
+
+# APEs computed by hand
+
+xb  <- predict(model_probit, type = "link")
+phi <- dnorm(xb)                              
+
+b <- coef(model_probit)
+
+APE_kidsl6   <- mean(phi) * b["kidsl6"]
+APE_kids618  <- mean(phi) * b["kids618"]
+APE_loghwage <- mean(phi) * b["log_hwage"]
+
+APEs <- data.frame(
+
+  APE  = round(c(APE_kidsl6, APE_kids618, APE_loghwage), 4)
+)
+
+APEs
+
+# Some measures of fit
+
+# Pseudo-R² of McFadden
+null_model <- glm(lfp ~ 1,
+                  data = mroz,
+                  family = binomial(link = "probit"))
+
+mc_fadden_r2 <- 1 - (as.numeric(logLik(model_probit)) /
+                     as.numeric(logLik(null_model)))
+
+cat("Pseudo-R² of McFadden :", round(mc_fadden_r2, 4), "\n")
+
+# Predicted probabilities
+p_hat <- predict(model_probit, type = "response")
+
+# If the predicted probabilities are greater or equal to 0.5, we predict lfp = 1; otherwise lfp = 0
+pred_class <- as.integer(p_hat >= 0.5)
+
+# We compute the rate at which the model correctly predicts labor force participation
+accuracy <- mean(pred_class == mroz$lfp)
+cat("Accuracy :", round(accuracy, 4), "\n")
+
+
+
+```
+
+*c. Explain why OLS on workers may be biased relative to the full-population wage equation.*
+
+See the report
+
+## 3. Heckman selection model
+
+(a) *Estimate the two-step model. Report the inverse Mills ratio and standard errors.*
+
+```{r}
+
+# Heckman 2 step model 
+
+# Define the logarithm variables
+mroz$wage <- as.numeric(mroz$wage)
+mroz$ln_wage <- log(mroz$wage)
+
+mroz$hwage <- as.numeric(mroz$hwage)
+mroz$log_hwage <- log(mroz$hwage)
+
+# First step: probit model for labor force participation
+probit_sel <- glm(lfp ~ kidsl6 + kids618 + log_hwage,
+                  family = binomial(link = "probit"),
+                  data = mroz)
+
+
+tidy(probit_sel) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 4)))
+
+# Second step: compute the Inverse Mills Ratio (IMR) for workers (lfp = 1)
+xb  <- predict(probit_sel, type = "link")
+phi <- dnorm(xb)
+Phi <- pnorm(xb)
+
+mroz$IMR <- NA_real_
+mroz$IMR[mroz$lfp == 1] <- phi[mroz$lfp == 1] / Phi[mroz$lfp == 1]
+
+mroz_working <- mroz %>% filter(lfp == 1)
+
+# Third step: OLS wage regression with IMR correction
+heckman_2step <- lm(ln_wage ~ exper + educ + bigcity + IMR,
+                    data = mroz_working)
+
+# Display coefficients and standard errors with the IMR
+results_step2 <- tidy(heckman_2step) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 4)))
+
+results_step2
+
+```
+
+*b. Estimate the full-information MLE version (see likelihood in any textbook or in the slides). Report the estimators of ρ, σ, and a test of H0 : ρ = 0. Report both the Wald test and the LR test.*
+
+For this question, the following code estimate the Heckman selection model by using MLE. It jointly estimates a probit model for labor force participation and a wage equation observed only for working women. The correlation between the unobserved determinants of participation and outcome equations is explicitly modeled. Standard errors are obtained from the numerical Hessian, and both Wald and likelihood ratio tests are used to assess whether sample selection bias is present.
+
+```{r}
+
+
+
+library(nloptr)
+library(numDeriv)
+
+# Selection equation
+z_vars <- c("kidsl6", "kids618", "log_hwage")
+
+# Outcome equation
+x_vars <- c("exper", "educ", "bigcity")
+
+
+# Log-likelihood for an observation 
+
+
+loglik_heckman <- function(i, theta, data) {
+
+  
+  d_i <- data$lfp[i]
+  z_i <- c(1, as.numeric(data[i, z_vars]))
+  
+  gamma <- c(theta[4], theta[1:3])
+  z_gamma <- sum(z_i * gamma)
+
+  if (d_i == 0) {
+    # Non-participation
+    llik <- pnorm(-z_gamma, log.p = TRUE)
+  } else {
+    # Participation
+    x_i <- c(1, as.numeric(data[i, x_vars]))
+    y_i <- data$ln_wage[i]
+
+    beta <- c(theta[8], theta[5:7])
+    sigma <- exp(theta[9])       
+    rho <- tanh(theta[10])        
+
+    x_beta <- sum(x_i * beta)
+    epsilon_std <- (y_i - x_beta) / sigma
+    
+    # Formula of the Heckman model
+  
+    arg_phi <- (z_gamma + rho * epsilon_std) / sqrt(1 - rho^2)
+
+    llik <- dnorm(epsilon_std, log = TRUE) + pnorm(arg_phi, log.p = TRUE) - log(sigma)
+  }
+
+  if (!is.finite(llik)) {
+    return(-1e10)
+  }
+
+  return(llik)
+}
+
+
+# Total log-likelihood
+
+
+loglik_total <- function(theta, data) {
+  n <- nrow(data)
+  LL <- sapply(1:n, loglik_heckman, theta = theta, data = data)
+
+  if (any(is.na(LL)) || any(!is.finite(LL))) {
+    return(1e10)
+  }
+
+  return(-mean(LL))
+}
+
+
+
+probit_init <- glm(lfp ~ kidsl6 + kids618 + log_hwage,
+                   data = mroz, family = binomial(link = "probit"))
+
+ols_init <- lm(ln_wage ~ exper + educ + bigcity,
+               data = mroz[mroz$lfp == 1, ])
+
+# Initial values
+theta0 <- c(
+  coef(probit_init)[2:4],
+  coef(probit_init)[1],   
+  coef(ols_init)[2:4],    
+  coef(ols_init)[1],              
+  log(summary(ols_init)$sigma), 
+  atanh(0.5)                      
+)
+
+cat("Valeurs initiales:\n")
+cat(sprintf("  log(sigma) = %.4f  (sigma = %.4f)\n", 
+            theta0[9], exp(theta0[9])))
+cat(sprintf("  atanh(rho) = %.4f  (rho = %.4f)\n", 
+            theta0[10], tanh(theta0[10])))
+cat("\nLog-vraisemblance initiale:", -loglik_total(theta0, mroz), "\n\n")
+
+
+#MLE estimation
+
+cat("Début de l'estimation MLE...\n\n")
+
+mle_result <- nloptr(
+  x0 = theta0,
+  eval_f = loglik_total,
+  lb = rep(-Inf, 10),
+  ub = rep(Inf, 10),
+  opts = list(
+    algorithm = "NLOPT_LN_NELDERMEAD",
+    ftol_rel = 1e-10,
+    xtol_rel = 1e-10,
+    maxeval = 200000,
+    print_level = 2
+  ),
+  data = mroz
+)
+
+if (mle_result$status < 0) {
+  warning("Problème de convergence: ", mle_result$message)
+}
+
+#Results
+
+theta_mle <- mle_result$solution
+sigma_hat <- exp(theta_mle[9])
+rho_hat <- tanh(theta_mle[10])
+
+
+
+
+# Standard deviations via the numeric Hessian
+
+cat("Calcul des écarts-types (Hessienne numérique)...\n")
+
+# Hessienne de la log-vraisemblance moyenne
+hess <- hessian(loglik_total, theta_mle, data = mroz)
+
+# Vérifier que la Hessienne est définie positive
+eigenvalues <- eigen(hess, symmetric = TRUE, only.values = TRUE)$values
+if (any(eigenvalues <= 0)) {
+  warning("La Hessienne n'est pas définie positive!")
+  cat("Valeurs propres:", eigenvalues, "\n")
+}
+
+# Variance Covariance Matrix
+
+var_cov <- solve(hess) / nrow(mroz)
+se_theta <- sqrt(diag(var_cov))
+
+# Delta method pour sigma et rho
+se_sigma <- se_theta[9] * sigma_hat      
+se_rho <- se_theta[10] * (1 - rho_hat^2) 
+
+
+# Results Table
+
+
+cat("\n==== TABLEAU COMPLET DES RÉSULTATS ====\n\n")
+
+# Équation de sélection
+cat("ÉQUATION DE SÉLECTION (Probit):\n")
+gamma_tab <- data.frame(
+  Variable = c("Intercept", "kidsl6", "kids618", "log_hwage"),
+  Coef = c(theta_mle[4], theta_mle[1:3]),
+  SE = c(se_theta[4], se_theta[1:3])
+)
+gamma_tab$z_stat <- gamma_tab$Coef / gamma_tab$SE
+gamma_tab$p_value <- 2 * pnorm(-abs(gamma_tab$z_stat))
+gamma_tab[, 2:5] <- round(gamma_tab[, 2:5], 4)
+print(gamma_tab, row.names = FALSE)
+
+# Équation de salaire
+cat("\nÉQUATION DE SALAIRE:\n")
+beta_tab <- data.frame(
+  Variable = c("Intercept", "exper", "educ", "bigcity"),
+  Coef = c(theta_mle[8], theta_mle[5:7]),
+  SE = c(se_theta[8], se_theta[5:7])
+)
+beta_tab$z_stat <- beta_tab$Coef / beta_tab$SE
+beta_tab$p_value <- 2 * pnorm(-abs(beta_tab$z_stat))
+beta_tab[, 2:5] <- round(beta_tab[, 2:5], 4)
+print(beta_tab, row.names = FALSE)
+
+# Parameters
+cat("\nPARAMÈTRES:\n")
+struct_tab <- data.frame(
+  Parameter = c("σ", "ρ"),
+  Estimate = c(sigma_hat, rho_hat),
+  SE = c(se_sigma, se_rho),
+  z_stat = c(sigma_hat/se_sigma, rho_hat/se_rho),
+  p_value = c(2*pnorm(-abs(sigma_hat/se_sigma)), 2*pnorm(-abs(rho_hat/se_rho)))
+)
+struct_tab[, 2:5] <- round(struct_tab[, 2:5], 4)
+print(struct_tab, row.names = FALSE)
+
+
+# Test for  H0: ρ = 0
+
+
+cat("\n\n==== TESTS POUR H0: ρ = 0 ====\n\n")
+
+# Test de Wald
+wald_stat <- (rho_hat / se_rho)^2
+wald_pval <- 1 - pchisq(wald_stat, df = 1)
+
+cat("1. Test de Wald:\n")
+cat(sprintf("   ρ = %.4f  (SE = %.4f)\n", rho_hat, se_rho))
+cat(sprintf("   Statistique χ² = %.4f\n", wald_stat))
+cat(sprintf("   P-value = %.4f\n", wald_pval))
+cat(sprintf("   Conclusion: %s\n\n", 
+            ifelse(wald_pval < 0.05, 
+                   "Rejet de H0 → biais de sélection significatif",
+                   "Non-rejet de H0 → pas de biais significatif")))
+
+# Test du rapport de vraisemblance
+cat("2. Test du rapport de vraisemblance (LR):\n")
+
+theta0_constr <- theta_mle[1:9]
+
+loglik_constr <- function(theta, data) {
+  theta_full <- c(theta, atanh(0))  # Fixer rho = 0
+  loglik_total(theta_full, data)
+}
+
+mle_constr <- nloptr(
+  x0 = theta0_constr,
+  eval_f = loglik_constr,
+  lb = rep(-Inf, 9),
+  ub = rep(Inf, 9),
+  opts = list(
+    algorithm = "NLOPT_LN_NELDERMEAD",
+    ftol_rel = 1e-10,
+    maxeval = 100000,
+    print_level = 0
+  ),
+  data = mroz
+)
+
+ll_unrest <- -mle_result$objective * nrow(mroz)
+ll_rest <- -mle_constr$objective * nrow(mroz)
+lr_stat <- 2 * (ll_unrest - ll_rest)
+lr_pval <- 1 - pchisq(lr_stat, df = 1)
+
+cat(sprintf("   Log-lik non contraint: %.4f\n", ll_unrest))
+cat(sprintf("   Log-lik contraint (ρ=0): %.4f\n", ll_rest))
+cat(sprintf("   Statistique LR χ² = %.4f\n", lr_stat))
+cat(sprintf("   P-value = %.4f\n", lr_pval))
+cat(sprintf("   Conclusion: %s\n\n", 
+            ifelse(lr_pval < 0.05,
+                   "Rejet de H0 → biais de sélection significatif",
+                   "Non-rejet de H0 → pas de biais significatif")))
+
+
+
+
+
+```
+
+*c. Compare the three different estimates of key returns (e.g. to education and experience). Comment on magnitudes and standard errors.*
+
+In this question we have to compare the results obtained from the outcome equation. Through the exercise we have estimate this equation with three different methods : the first one with the naive estimation directly with OLS model, then the Heckman selection model taking into account the possible selection bias with the Inverse Mills Ratio and finally the Heckman selection model but estimated by MLE. To have a clearer view we have added a summary tables that summarizes the results of the outcome equation with the three different estimations.
+
+```{r}
+
+
+# Add stars for the significativity of the varibales to give a clearer overview in the final table
+
+add_stars <- function(est, p) {
+  stars <- ifelse(p < 0.01, "***",
+           ifelse(p < 0.05, "**",
+           ifelse(p < 0.10, "*", "")))
+  paste0(round(est, 4), stars)
+}
+
+
+#Naive estimation OLS
+
+ols_tab <- tidy(model_OLS) %>%
+  filter(term %in% c("exper", "educ", "bigcity")) %>%
+  mutate(
+    OLS = paste0(
+      add_stars(estimate, p.value),
+      "<br>(",
+      round(std.error, 4),
+      ")"
+    )
+  ) %>%
+  dplyr::select(term, OLS)
+
+
+#Heckman 2 steps models
+
+heck2_tab <- results_step2 %>%
+  filter(term %in% c("exper", "educ", "bigcity")) %>%
+  mutate(
+    Heckman_2step = paste0(
+      add_stars(estimate, p.value),
+      "<br>(",
+      round(std.error, 4),
+      ")"
+    )
+  ) %>%
+  dplyr::select(term, Heckman_2step)
+
+
+# Heckman MLE 
+
+heckmle_tab <- beta_tab %>%
+  filter(Variable %in% c("exper", "educ", "bigcity")) %>%
+  mutate(
+    Heckman_MLE = paste0(
+      add_stars(Coef, p_value),
+      "<br>(",
+      round(SE, 4),
+      ")"
+    )
+  ) %>%
+  dplyr::select(Variable, Heckman_MLE) %>%
+  rename(term = Variable)
+
+
+#Final  table 
+final_table <- ols_tab %>%
+  left_join(heck2_tab, by = "term") %>%
+  left_join(heckmle_tab, by = "term") %>%
+  mutate(
+    term = dplyr::case_when(
+      term == "exper"   ~ "Experience",
+      term == "educ"    ~ "Education",
+      term == "bigcity" ~ "Big city",
+      TRUE              ~ term
+    )
+  )
+
+
+#Display the final table
+
+kable(
+  final_table,
+  col.names = c("", "OLS", "Heckman two-step", "Heckman MLE"),
+  escape = FALSE,
+  caption = "Comparison of key returns across estimation methods"
+)
+
+
+
+```
+
+*d. Compute and interpret predicted participation probabilities and expected wages for workers for two contrasting profiles (define and report them).*
+
+For this question, we compute the predicted probabilities and the expected wages fro 2 types of women. We have therefore created two very different type of women. Profile A that corresponds to women with characteristics that increase the probability to work : so we put 0 for young children and the 25th percentile for kids618, a low husband’s wage (25th percentile of log_hwage), a labor market experience (75th percentile), a level of education of 15 years and living in a big city (`bigcity = 1`).
+
+Secondly we have created a Profile B that corresponds to women with characteristcs that decrease the probability to work so we put : 2 for young children and the 75th percentile for kids618, a high husband’s wage (75th percentile), experience (25th percentile), a level of education of 7 years and not living in a big city (`bigcity = 0`)
+
+This code constructs two representative profiles of women (high vs. low participation) based on sample quartiles and uses the estimated Heckman model to predict their labor-force participation and wages. Using the MLE estimates of the selection equation, it computes for each profile the probability of working and the associated Inverse Mills Ratio. These are then used to obtain expected hourly wages conditional on working, either from the Heckman two-step model (when available) or from the Heckman MLE specification.
+
+```{r}
+
+
+
+
+# Inverse Mills Ratio
+IMR_fun <- function(xb) dnorm(xb) / pnorm(xb)
+
+
+make_Z <- function(df) cbind(1, df$kidsl6, df$kids618, df$log_hwage)
+make_X <- function(df) cbind(1, df$exper, df$educ, df$bigcity)
+
+# Build the 2 different profile of women
+
+q <- function(v, p) as.numeric(quantile(v, p, na.rm = TRUE))
+
+profile_A <- data.frame(
+  Profile   = "Profil A (high partipation profile)",
+  kidsl6    = 0,
+  kids618   = as.integer(q(mroz$kids618, 0.25)),
+  log_hwage = q(mroz$log_hwage, 0.25),
+  exper     = q(mroz$exper, 0.75),
+  educ      = 15,
+  bigcity   = 1
+)
+
+profile_B <- data.frame(
+  Profile   = "Profil B (low participation profile)",
+  kidsl6    = 2,
+  kids618   = as.integer(q(mroz$kids618, 0.75)),
+  log_hwage = q(mroz$log_hwage, 0.75),
+  exper     = q(mroz$exper, 0.25),
+  educ      = 7,
+  bigcity   = 0
+)
+
+profiles <- bind_rows(profile_A, profile_B)
+
+cat("PROFILS SÉLECTIONNÉS (basés sur les quartiles de l'échantillon):\n\n")
+print(profiles)
+cat("\n")
+
+#Estimation MLE model 
+
+gamma_mle <- c(theta_mle[4], theta_mle[1:3])  # (intercept, kidsl6, kids618, log_hwage)
+
+Z <- make_Z(profiles)
+z_gamma <- as.numeric(Z %*% gamma_mle)
+
+p_work <- pnorm(z_gamma)
+IMR <- IMR_fun(z_gamma)
+
+cat("PROBABILITÉS DE PARTICIPATION (MLE):\n")
+cat(sprintf("  %s: %.2f%%\n", profiles$Profile[1], p_work[1] * 100))
+cat(sprintf("  %s: %.2f%%\n\n", profiles$Profile[2], p_work[2] * 100))
+
+#Expected wages fro each profile 
+
+X <- make_X(profiles)
+
+#Heckman 2 step model 
+has_twostep <- FALSE
+if (exists("heckman_2step")) {
+  b2 <- coef(heckman_2step)
+  lnw_heck2 <- as.numeric(X %*% b2[1:4] + b2["IMR"] * IMR)
+  w_heck2 <- exp(lnw_heck2)
+  has_twostep <- TRUE
+} else {
+  lnw_heck2 <- NA
+  w_heck2 <- NA
+  cat("Note: heckman_2step non trouvé, prédictions two-step ignorées.\n\n")
+}
+
+
+beta_mle_full <- c(theta_mle[8], theta_mle[5:7])  # (intercept, exper, educ, bigcity)
+lnw_mle <- as.numeric(X %*% beta_mle_full + (rho_hat * sigma_hat) * IMR)
+w_mle <- exp(lnw_mle)
+
+cat("SALAIRES ESPÉRÉS CONDITIONNELS (si travaille):\n\n")
+cat("Profil A:\n")
+if (has_twostep) cat(sprintf("  Heckman 2-step: $%.2f/h\n", w_heck2[1]))
+cat(sprintf("  Heckman MLE:    $%.2f/h\n\n", w_mle[1]))
+
+cat("Profil B:\n")
+if (has_twostep) cat(sprintf("  Heckman 2-step: $%.2f/h\n", w_heck2[2]))
+cat(sprintf("  Heckman MLE:    $%.2f/h\n\n", w_mle[2]))
+
+#Summary Table
+
+out <- profiles %>%
+  mutate(
+    Pr_travaille = p_work,
+    IMR = IMR,
+    Salaire_2step = w_heck2,
+    Salaire_MLE = w_mle
+  )
+
+if (has_twostep) {
+  out <- out %>%
+    dplyr::select(Profile, kidsl6, kids618, log_hwage, exper, educ, bigcity,
+           Pr_travaille, IMR, Salaire_2step, Salaire_MLE)
+} else {
+  out <- out %>%
+    dplyr::select(Profile, kidsl6, kids618, log_hwage, exper, educ, bigcity,
+           Pr_travaille, IMR, Salaire_MLE)
+}
+
+out_rounded <- out %>%
+  mutate(across(where(is.numeric), ~ round(.x, 4)))
+
+cat("\n==== TABLEAU RÉCAPITULATIF ====\n\n")
+print(kable(out_rounded,
+            caption = "Probabilités de participation et salaires espérés conditionnels"))
+
+
+```
+
+## 4. Identification and robustness
+
+(a) *Update the values of x and z in order to improve the model.*
+
+The goal of this question is to improve the model by adding new variables in $x$ and $z$ . Indeed since the beginning of the exercise we determine the participation into the labor force for women in 1975 only with three variables : `kidsl6`, `kids618` and `log(hwage)` and we have estimated the log(wage), also with only three variables `exper`, `educ` and `bigcity.` Adding new variables for both equations allow to have a better identification.
+
+Firstly, to estimate the probability to participate into the labor force for the vector $z$ we can add as variables : `unemployment`, `fathereduc` and `mothereduc`. Indeed, the unemployment rate could affect the likelihood of finding a job, and therefore influencing the decision to participate in the labor market. A high unemployment rate reflects a tight labor market with greater competition for jobs, which may discourage labor force participation. Conditional on employment, however, local labor market conditions are not expected to directly determine an individual’s hourly wage, which is primarily driven by personal characteristics such as education and experience.
+
+We wanted to add also the Father's Education level and the Mother's Education level. Indeed, the level of education of the parents can influence the willingness to particpate or not into the labor force for example through family values or attitudes toward work. Women with highly educated parents may be more encouraged to work. However we do not expect that the education of the parents can influence directly the wages.
+
+For the wage equation we decided to include the `age` of the woman. The age can have a direct impact on the level of wages. As older individuals typically have more experience and potentially more labor productivity leading to higher wages. The level of the age do not have a direct impact on the motivation to work.
+
+In short, the new vectors $x$ and $z$ are the following:
+
+**Selection equation (labor force participation)**
+
+The vector of explanatory variables for the selection equation is: $$
+z = (\text{kidsl6}, \text{kids618}, \log(\text{hwage}), \text{unemployment}, \text{fathereduc}, \text{mothereduc})
+$$
+
+**Outcome equation (wage equation)**
+
+The vector of explanatory variables for the wage equation is: $$
+x = (\text{exper}, \text{educ}, \text{bigcity}, \text{age})
+$$
+
+*b. Report the same quantities than above, comment.*
+
+For this question, we reuse the code from Question 3(b) to estimate log(wage), but with the new vectors $x$ and $z$, using a Heckman selection model estimated by MLE.
+
+```{r}
+
+
+#MLE ESTIMATION WITH THE NEW MODEL CREATED
+
+#New variables added, contruction of the new model
+
+# Selection equation (6 variables)
+z_vars <- c("kidsl6", "kids618", "log_hwage", "Unemployment", "fathereduc", "mothereduc")
+
+# Outcome equation (4 variables)
+x_vars <- c("exper", "educ", "bigcity", "age")
+
+cat("Variables du modèle amélioré:\n")
+cat("  z (sélection):", paste(z_vars, collapse=", "), "\n")
+cat("  x (salaire):  ", paste(x_vars, collapse=", "), "\n\n")
+
+
+# log likelihood for a single obervation
+
+loglik_heckman <- function(i, theta, data) {
+
+  
+  d_i <- data$lfp[i]
+  z_i <- c(1, as.numeric(data[i, z_vars]))
+  
+  gamma <- c(theta[7], theta[1:6])
+  z_gamma <- sum(z_i * gamma)
+
+  if (d_i == 0) {
+    # Non-participation
+    llik <- pnorm(-z_gamma, log.p = TRUE)
+  } else {
+    # Participation
+    x_i <- c(1, as.numeric(data[i, x_vars]))
+    y_i <- data$ln_wage[i]
+
+    beta <- c(theta[12], theta[8:11])
+    sigma <- exp(theta[13])
+    rho <- tanh(theta[14])
+
+    x_beta <- sum(x_i * beta)
+    epsilon_std <- (y_i - x_beta) / sigma
+    
+
+    arg_phi <- (z_gamma + rho * epsilon_std) / sqrt(1 - rho^2)
+
+    llik <- dnorm(epsilon_std, log = TRUE) + pnorm(arg_phi, log.p = TRUE) - log(sigma)
+  }
+
+  if (!is.finite(llik)) {
+    return(-1e10)
+  }
+
+  return(llik)
+}
+
+
+# Total Log-Likelihood
+
+
+loglik_total <- function(theta, data) {
+  n <- nrow(data)
+  LL <- sapply(1:n, loglik_heckman, theta = theta, data = data)
+
+  if (any(is.na(LL)) || any(!is.finite(LL))) {
+    return(1e10)
+  }
+
+  return(-mean(LL))
+}
+
+
+# Inital Values
+
+
+probit_init <- glm(lfp ~ kidsl6 + kids618 + log_hwage + Unemployment + fathereduc + mothereduc,
+                   data = mroz, family = binomial(link = "probit"))
+
+ols_init <- lm(ln_wage ~ exper + educ + bigcity + age,
+               data = mroz[mroz$lfp == 1, ])
+
+
+theta0 <- c(
+  coef(probit_init)[2:7],  
+  coef(probit_init)[1],           
+  coef(ols_init)[2:5],              
+  coef(ols_init)[1],                 
+  log(summary(ols_init)$sigma),     
+  atanh(0.5)                         
+)
+
+cat("Valeurs initiales:\n")
+cat(sprintf("  Nombre de paramètres: %d\n", length(theta0)))
+cat(sprintf("  log(sigma) = %.4f  (sigma = %.4f)\n", 
+            theta0[13], exp(theta0[13])))
+cat(sprintf("  atanh(rho) = %.4f  (rho = %.4f)\n", 
+            theta0[14], tanh(theta0[14])))
+cat("\nLog-vraisemblance initiale:", -loglik_total(theta0, mroz), "\n\n")
+
+
+cat("Début de l'estimation MLE...\n\n")
+
+mle_result <- nloptr(
+  x0 = theta0,
+  eval_f = loglik_total,
+  lb = rep(-Inf, 14),
+  ub = rep(Inf, 14),
+  opts = list(
+    algorithm = "NLOPT_LN_NELDERMEAD",
+    ftol_rel = 1e-10,
+    xtol_rel = 1e-10,
+    maxeval = 200000,
+    print_level = 2
+  ),
+  data = mroz
+)
+
+if (mle_result$status < 0) {
+  warning("Problème de convergence: ", mle_result$message)
+}
+
+
+theta_mle <- mle_result$solution
+sigma_hat <- exp(theta_mle[13])
+rho_hat <- tanh(theta_mle[14])
+
+
+# Standard Errors with the numerical Hessian 
+
+
+cat("Calcul des écarts-types (Hessienne numérique)...\n")
+
+# Hessienne de la log-vraisemblance moyenne
+hess <- hessian(loglik_total, theta_mle, data = mroz)
+
+# Vérifier que la Hessienne est définie positive
+eigenvalues <- eigen(hess, symmetric = TRUE, only.values = TRUE)$values
+if (any(eigenvalues <= 0)) {
+  warning("La Hessienne n'est pas définie positive!")
+  cat("Valeurs propres:", eigenvalues, "\n")
+}
+
+# Variance-covariance Matrix
+
+var_cov <- solve(hess) / nrow(mroz)
+se_theta <- sqrt(diag(var_cov))
+
+# Delta method for sigma and rho
+se_sigma <- se_theta[13] * sigma_hat  
+se_rho <- se_theta[14] * (1 - rho_hat^2) 
+
+#Summary table 
+
+cat("\n==== TABLEAU COMPLET DES RÉSULTATS ====\n\n")
+
+# Équation de sélection
+cat("ÉQUATION DE SÉLECTION (Probit):\n")
+gamma_tab <- data.frame(
+  Variable = c("Intercept", z_vars),
+  Coef = c(theta_mle[7], theta_mle[1:6]),
+  SE = c(se_theta[7], se_theta[1:6])
+)
+gamma_tab$z_stat <- gamma_tab$Coef / gamma_tab$SE
+gamma_tab$p_value <- 2 * pnorm(-abs(gamma_tab$z_stat))
+gamma_tab[, 2:5] <- round(gamma_tab[, 2:5], 4)
+print(gamma_tab, row.names = FALSE)
+
+# Équation de salaire
+cat("\nÉQUATION DE SALAIRE:\n")
+beta_tab <- data.frame(
+  Variable = c("Intercept", x_vars),
+  Coef = c(theta_mle[12], theta_mle[8:11]),
+  SE = c(se_theta[12], se_theta[8:11])
+)
+beta_tab$z_stat <- beta_tab$Coef / beta_tab$SE
+beta_tab$p_value <- 2 * pnorm(-abs(beta_tab$z_stat))
+beta_tab[, 2:5] <- round(beta_tab[, 2:5], 4)
+print(beta_tab, row.names = FALSE)
+
+# Paramètres de structure
+cat("\nPARAMÈTRES DE STRUCTURE:\n")
+struct_tab <- data.frame(
+  Parameter = c("σ", "ρ"),
+  Estimate = c(sigma_hat, rho_hat),
+  SE = c(se_sigma, se_rho),
+  z_stat = c(sigma_hat/se_sigma, rho_hat/se_rho),
+  p_value = c(2*pnorm(-abs(sigma_hat/se_sigma)), 2*pnorm(-abs(rho_hat/se_rho)))
+)
+struct_tab[, 2:5] <- round(struct_tab[, 2:5], 4)
+print(struct_tab, row.names = FALSE)
+
+
+# Tests for H0: ρ = 0
+
+
+cat("\n\n==== TESTS POUR H0: ρ = 0 ====\n\n")
+
+# Test de Wald
+wald_stat <- (rho_hat / se_rho)^2
+wald_pval <- 1 - pchisq(wald_stat, df = 1)
+
+cat("1. Test de Wald:\n")
+cat(sprintf("   ρ = %.4f  (SE = %.4f)\n", rho_hat, se_rho))
+cat(sprintf("   Statistique χ² = %.4f\n", wald_stat))
+cat(sprintf("   P-value = %.4f\n", wald_pval))
+cat(sprintf("   Conclusion: %s\n\n", 
+            ifelse(wald_pval < 0.05, 
+                   "Rejet de H0 → biais de sélection significatif",
+                   "Non-rejet de H0 → pas de biais significatif")))
+
+# Test du rapport de vraisemblance
+cat("2. Test du rapport de vraisemblance (LR):\n")
+
+theta0_constr <- theta_mle[1:13]
+
+loglik_constr <- function(theta, data) {
+  theta_full <- c(theta, atanh(0))  # Fixer rho = 0
+  loglik_total(theta_full, data)
+}
+
+mle_constr <- nloptr(
+  x0 = theta0_constr,
+  eval_f = loglik_constr,
+  lb = rep(-Inf, 13),
+  ub = rep(Inf, 13),
+  opts = list(
+    algorithm = "NLOPT_LN_NELDERMEAD",
+    ftol_rel = 1e-10,
+    maxeval = 100000,
+    print_level = 0
+  ),
+  data = mroz
+)
+
+ll_unrest <- -mle_result$objective * nrow(mroz)
+ll_rest <- -mle_constr$objective * nrow(mroz)
+lr_stat <- 2 * (ll_unrest - ll_rest)
+lr_pval <- 1 - pchisq(lr_stat, df = 1)
+
+cat(sprintf("   Log-lik non contraint: %.4f\n", ll_unrest))
+cat(sprintf("   Log-lik contraint (ρ=0): %.4f\n", ll_rest))
+cat(sprintf("   Statistique LR χ² = %.4f\n", lr_stat))
+cat(sprintf("   P-value = %.4f\n", lr_pval))
+cat(sprintf("   Conclusion: %s\n\n", 
+            ifelse(lr_pval < 0.05,
+                   "Rejet de H0 → biais de sélection significatif",
+                   "Non-rejet de H0 → pas de biais significatif")))
+
+```
+
+*c. Functional-form robustness: include now non linearities (e.g., exper2), interactions, or alternative age controls. Summarize differences.*
+
+In this question we will continue to modify the vector $x$ and $z$ by adding interactions, non lineatities and alternative age controls. We can try several models trying to improve the model and compare them with the models obtained from the questions 3b and 4b. For this question we will test three different models : Model 1 with non linearities, Model 2 with interaction and Model 3 with age controls.
+
+**Model 1 with Nonlinearities**
+
+For the Model 1 therefore, we have :
+
+We keep the same vector of explanatory variables as in the baseline specification: $$
+z = (\text{kidsl6},\ \text{kids618},\ \log(\text{hwage}),\ \text{unemployment},\ \text{fathereduc},\ \text{mothereduc}).
+$$
+
+To allow for non-linear relationships, we added to the the wage equation a quadratic terms in experience and age: $$
+x = (\text{exper},\ \text{exper}^2,\ \text{educ},\ \text{bigcity},\ \text{age},\ \text{age}^2).
+$$
+
+We decided to test this new model. Indeed, model 1 allows us to relax the assumption that the wage is linear over the life cycle. We assume here that the level of experience and the age of the workers are not necessarily linear with the wage. Returns to labor market are expected to be diminishing: workers accumulate skills rapidly at the beginning of their careers, while additional experience yields smaller productivity gains at later stages. Including a squared term in experience captures this non linear justification.
+
+Similarly, the effect of age on wages is unlikely to be linear. Age captures not only the experience, but also the seniority and career progression, which may lead to wage growth at early and mid-career stages and a stabilization later on.
+
+**Model 2 with Interactions**
+
+For the model 2, we decided to have interaction between specific variables, and we get the new vectors $x$ et $z$ :
+
+We keep the same vector of explanatory variables as in the baseline specification:\
+$$
+z = (\text{kidsl6},\ \text{kids618},\ \log(\text{hwage}),\ \text{unemployment},\ \text{fathereduc},\ \text{mothereduc}).
+$$
+
+And we changed the vector $z$:
+
+$$
+x = (\text{exper},\ \text{educ},\ \text{bigcity},\ \text{age},\ 
+\text{educ}\times\text{exper},\ 
+\text{bigcity}\times\text{educ}).
+$$
+
+Here we introduced 2 new terms : `educ*exper` and `bigcity*educ` . First the interaction between education and experience captures the idea that the return of experience may depend of the level of education. More educated individuals are more likely to work in occupations with steeper career paths and greater opportunities for learning and promotion, so additional experience may translate into higher wage gains for them.
+
+Additionally, the second interaction term between bigcity and the education, indicates the possibility that the return of education can be different depending on the geographical labor markets. Indeed, large cities typically offer a wider range of demand for high-skilled jobs (service sector), implying a an increase of wage associated with a high education level.
+
+**Model 3 with Age Controls**
+
+We keep the same vector of explanatory variables as in the baseline specification: $$ z = (\text{kidsl6},\ \text{kids618},\ \log(\text{hwage}),\ \text{unemployment},\ \text{fathereduc},\ \text{mothereduc}). $$
+
+We change the composition of the vector $x$ by replacing the continuous age variable with age-group dummies into 3 categories with the reference of women aged between 30-39 years. $$
+x = (\text{exper},\ \text{educ},\ \text{bigcity},\ \text{age_40-49},\ \text{age_50-more}).
+$$
+
+We choose this model and decided to replace the continuous age variable with age-group dummies. Using age groups allow to study the potential non linear relationship between the age the wage and is particulary useful if wage growth occurs in discrete steps.
+
+We decided to split the age continuous variables into 3 groups :
+
+-   **30 to 39 years** to capture early career progression
+
+-   **40 to 49 years** to capture mid-career stabilization
+
+-   **50 to more** to get the later career phases
+
+We define the group of 30-39 year old to be the reference group therefore.
+
+After having define all the 3 new models, the following code will estimate each model using the Heckman MLE method and compare each model with the previous model done in question 3,b and 4,d. ( we reuse the same code done for previous question and we adapted)
+
+**Model 1**
+
+```{r}
+
+#MLE ESTIMATION OF MODEL 1
+
+library(nloptr)
+library(numDeriv)
+
+
+#Creation of the two new variables exper2 and age2
+
+mroz$exper2 <- mroz$exper^2
+mroz$age2 <- mroz$age^2
+
+
+#Model 1 Creation
+
+# Selection equation (6 variables - inchangé)
+z_vars <- c("kidsl6", "kids618", "log_hwage", "Unemployment", "fathereduc", "mothereduc")
+
+# Outcome equation (6 variables - avec termes quadratiques)
+x_vars <- c("exper", "exper2", "educ", "bigcity", "age", "age2")
+
+
+cat("Variables du Modèle 1:\n")
+cat("  z (sélection):", paste(z_vars, collapse=", "), "\n")
+cat("  x (salaire):  ", paste(x_vars, collapse=", "), "\n\n")
+
+
+# Log-likelihood for a single observation
+
+
+loglik_heckman <- function(i, theta, data) {
+
+  
+  d_i <- data$lfp[i]
+  z_i <- c(1, as.numeric(data[i, z_vars]))
+  
+  gamma <- c(theta[7], theta[1:6])
+  z_gamma <- sum(z_i * gamma)
+
+  if (d_i == 0) {
+    # Non-participation
+    llik <- pnorm(-z_gamma, log.p = TRUE)
+  } else {
+    # Participation
+    x_i <- c(1, as.numeric(data[i, x_vars]))
+    y_i <- data$ln_wage[i]
+
+    beta <- c(theta[14], theta[8:13])
+    sigma <- exp(theta[15])
+    rho <- tanh(theta[16])  
+
+    x_beta <- sum(x_i * beta)
+    epsilon_std <- (y_i - x_beta) / sigma
+    
+  
+    arg_phi <- (z_gamma + rho * epsilon_std) / sqrt(1 - rho^2)
+
+    llik <- dnorm(epsilon_std, log = TRUE) + pnorm(arg_phi, log.p = TRUE) - log(sigma)
+  }
+
+  if (!is.finite(llik)) {
+    return(-1e10)
+  }
+
+  return(llik)
+}
+
+# Total log-likelihood
+
+
+loglik_total <- function(theta, data) {
+  n <- nrow(data)
+  LL <- sapply(1:n, loglik_heckman, theta = theta, data = data)
+
+  if (any(is.na(LL)) || any(!is.finite(LL))) {
+    return(1e10)
+  }
+
+  return(-mean(LL))
+}
+
+
+# Inital Values 
+
+
+probit_init <- glm(lfp ~ kidsl6 + kids618 + log_hwage + Unemployment + fathereduc + mothereduc,
+                   data = mroz, family = binomial(link = "probit"))
+
+ols_init <- lm(ln_wage ~ exper + exper2 + educ + bigcity + age + age2,
+               data = mroz[mroz$lfp == 1, ])
+
+
+theta0 <- c(
+  coef(probit_init)[2:7],
+  coef(probit_init)[1], 
+  coef(ols_init)[2:7],      
+  coef(ols_init)[1],          
+  log(summary(ols_init)$sigma), 
+  atanh(0.5)                         
+)
+
+cat("Valeurs initiales:\n")
+cat(sprintf("  Nombre de paramètres: %d\n", length(theta0)))
+cat(sprintf("  log(sigma) = %.4f  (sigma = %.4f)\n", 
+            theta0[15], exp(theta0[15])))
+cat(sprintf("  atanh(rho) = %.4f  (rho = %.4f)\n", 
+            theta0[16], tanh(theta0[16])))
+cat("\nLog-vraisemblance initiale:", -loglik_total(theta0, mroz), "\n\n")
+
+
+
+cat("Début de l'estimation MLE...\n\n")
+
+mle_result <- nloptr(
+  x0 = theta0,
+  eval_f = loglik_total,
+  lb = rep(-Inf, 16),
+  ub = rep(Inf, 16),
+  opts = list(
+    algorithm = "NLOPT_LN_NELDERMEAD",
+    ftol_rel = 1e-10,
+    xtol_rel = 1e-10,
+    maxeval = 200000,
+    print_level = 2
+  ),
+  data = mroz
+)
+
+if (mle_result$status < 0) {
+  warning("Problème de convergence: ", mle_result$message)
+}
+
+
+theta_mle <- mle_result$solution
+sigma_hat <- exp(theta_mle[15])
+rho_hat <- tanh(theta_mle[16])
+
+
+# SD with the numerical HESSIAN
+
+
+cat("Calcul des écarts-types (Hessienne numérique)...\n")
+
+
+hess <- hessian(loglik_total, theta_mle, data = mroz)
+
+
+eigenvalues <- eigen(hess, symmetric = TRUE, only.values = TRUE)$values
+if (any(eigenvalues <= 0)) {
+  warning("La Hessienne n'est pas définie positive!")
+  cat("Valeurs propres:", eigenvalues, "\n")
+}
+
+
+var_cov <- solve(hess) / nrow(mroz)
+se_theta <- sqrt(diag(var_cov))
+
+# Delta method for sigma and rho
+se_sigma <- se_theta[15] * sigma_hat  
+se_rho <- se_theta[16] * (1 - rho_hat^2) 
+
+
+#Summary Table 
+
+cat("\n==== TABLEAU COMPLET DES RÉSULTATS ====\n\n")
+
+# Équation de sélection
+cat("ÉQUATION DE SÉLECTION (Probit):\n")
+gamma_tab <- data.frame(
+  Variable = c("Intercept", z_vars),
+  Coef = c(theta_mle[7], theta_mle[1:6]),
+  SE = c(se_theta[7], se_theta[1:6])
+)
+gamma_tab$z_stat <- gamma_tab$Coef / gamma_tab$SE
+gamma_tab$p_value <- 2 * pnorm(-abs(gamma_tab$z_stat))
+gamma_tab[, 2:5] <- round(gamma_tab[, 2:5], 4)
+print(gamma_tab, row.names = FALSE)
+
+# Équation de salaire
+cat("\nÉQUATION DE SALAIRE:\n")
+beta_tab <- data.frame(
+  Variable = c("Intercept", x_vars),
+  Coef = c(theta_mle[14], theta_mle[8:13]),
+  SE = c(se_theta[14], se_theta[8:13])
+)
+beta_tab$z_stat <- beta_tab$Coef / beta_tab$SE
+beta_tab$p_value <- 2 * pnorm(-abs(beta_tab$z_stat))
+beta_tab[, 2:5] <- round(beta_tab[, 2:5], 4)
+print(beta_tab, row.names = FALSE)
+
+# Paramètres de structure
+cat("\nPARAMÈTRES DE STRUCTURE:\n")
+struct_tab <- data.frame(
+  Parameter = c("σ", "ρ"),
+  Estimate = c(sigma_hat, rho_hat),
+  SE = c(se_sigma, se_rho),
+  z_stat = c(sigma_hat/se_sigma, rho_hat/se_rho),
+  p_value = c(2*pnorm(-abs(sigma_hat/se_sigma)), 2*pnorm(-abs(rho_hat/se_rho)))
+)
+struct_tab[, 2:5] <- round(struct_tab[, 2:5], 4)
+print(struct_tab, row.names = FALSE)
+
+
+# Tests for  H0: ρ = 0
+
+
+cat("\n\n==== TESTS POUR H0: ρ = 0 ====\n\n")
+
+# Test de Wald
+wald_stat <- (rho_hat / se_rho)^2
+wald_pval <- 1 - pchisq(wald_stat, df = 1)
+
+cat("1. Test de Wald:\n")
+cat(sprintf("   ρ = %.4f  (SE = %.4f)\n", rho_hat, se_rho))
+cat(sprintf("   Statistique χ² = %.4f\n", wald_stat))
+cat(sprintf("   P-value = %.4f\n", wald_pval))
+cat(sprintf("   Conclusion: %s\n\n", 
+            ifelse(wald_pval < 0.05, 
+                   "Rejet de H0 → biais de sélection significatif",
+                   "Non-rejet de H0 → pas de biais significatif")))
+
+#LR TEST
+cat("2. Test du rapport de vraisemblance (LR):\n")
+
+theta0_constr <- theta_mle[1:15]
+
+loglik_constr <- function(theta, data) {
+  theta_full <- c(theta, atanh(0))  # Fixer rho = 0
+  loglik_total(theta_full, data)
+}
+
+mle_constr <- nloptr(
+  x0 = theta0_constr,
+  eval_f = loglik_constr,
+  lb = rep(-Inf, 15),
+  ub = rep(Inf, 15),
+  opts = list(
+    algorithm = "NLOPT_LN_NELDERMEAD",
+    ftol_rel = 1e-10,
+    maxeval = 100000,
+    print_level = 0
+  ),
+  data = mroz
+)
+
+ll_unrest <- -mle_result$objective * nrow(mroz)
+ll_rest <- -mle_constr$objective * nrow(mroz)
+lr_stat <- 2 * (ll_unrest - ll_rest)
+lr_pval <- 1 - pchisq(lr_stat, df = 1)
+
+cat(sprintf("   Log-lik non contraint: %.4f\n", ll_unrest))
+cat(sprintf("   Log-lik contraint (ρ=0): %.4f\n", ll_rest))
+cat(sprintf("   Statistique LR χ² = %.4f\n", lr_stat))
+cat(sprintf("   P-value = %.4f\n", lr_pval))
+cat(sprintf("   Conclusion: %s\n\n", 
+            ifelse(lr_pval < 0.05,
+                   "Rejet de H0 → biais de sélection significatif",
+                   "Non-rejet de H0 → pas de biais significatif")))
+
+
+
+```
+
+**Model 2**
+
+The following code will estimate the model 2 with Interactions
+
+```{r}
+
+library(nloptr)
+library(numDeriv)
+
+#Creation of the two variables
+
+mroz$exper_educ <- mroz$exper * mroz$educ
+mroz$bigcity_educ <- mroz$bigcity * mroz$educ
+
+# Selection equation
+z_vars <- c("kidsl6", "kids618", "log_hwage", "Unemployment", "fathereduc", "mothereduc")
+
+# Outcome equation
+x_vars <- c("exper", "educ", "bigcity", "age", "exper_educ", "bigcity_educ")
+
+
+# Log-likelihoof for a single observation
+
+
+loglik_heckman <- function(i, theta, data) {
+
+
+  
+  d_i <- data$lfp[i]
+  z_i <- c(1, as.numeric(data[i, z_vars]))
+  
+  gamma <- c(theta[7], theta[1:6])
+  z_gamma <- sum(z_i * gamma)
+
+  if (d_i == 0) {
+    # Non-participation
+    llik <- pnorm(-z_gamma, log.p = TRUE)
+  } else {
+    # Participation
+    x_i <- c(1, as.numeric(data[i, x_vars]))
+    y_i <- data$ln_wage[i]
+
+    beta <- c(theta[14], theta[8:13])
+    sigma <- exp(theta[15])       # Transformation inverse
+    rho <- tanh(theta[16])      
+
+    x_beta <- sum(x_i * beta)
+    epsilon_std <- (y_i - x_beta) / sigma
+
+    
+    arg_phi <- (z_gamma + rho * epsilon_std) / sqrt(1 - rho^2)
+
+    llik <- dnorm(epsilon_std, log = TRUE) + pnorm(arg_phi, log.p = TRUE) - log(sigma)
+  }
+
+  if (!is.finite(llik)) {
+    return(-1e10)
+  }
+
+  return(llik)
+}
+
+
+# Total Log-Likelihood
+
+
+loglik_total <- function(theta, data) {
+  n <- nrow(data)
+  LL <- sapply(1:n, loglik_heckman, theta = theta, data = data)
+
+  if (any(is.na(LL)) || any(!is.finite(LL))) {
+    return(1e10)
+  }
+
+  return(-mean(LL))
+}
+
+#Inital Values
+
+probit_init <- glm(lfp ~ kidsl6 + kids618 + log_hwage + Unemployment + fathereduc + mothereduc,
+                   data = mroz, family = binomial(link = "probit"))
+
+ols_init <- lm(ln_wage ~ exper + educ + bigcity + age + exper_educ + bigcity_educ,
+               data = mroz[mroz$lfp == 1, ])
+
+
+theta0 <- c(
+  coef(probit_init)[2:7],         
+  coef(probit_init)[1],   
+  coef(ols_init)[2:7],      
+  coef(ols_init)[1],        
+  log(summary(ols_init)$sigma), 
+  atanh(0.5)                        
+)
+cat("Valeurs initiales:\n")
+cat(sprintf("  log(sigma) = %.4f  (sigma = %.4f)\n", 
+            theta0[15], exp(theta0[15])))
+cat(sprintf("  atanh(rho) = %.4f  (rho = %.4f)\n", 
+            theta0[16], tanh(theta0[16])))
+cat("\nLog-vraisemblance initiale:", -loglik_total(theta0, mroz), "\n\n")
+
+
+
+cat("Début de l'estimation MLE...\n\n")
+
+mle_result <- nloptr(
+  x0 = theta0,
+  eval_f = loglik_total,
+  lb = rep(-Inf, 16),
+  ub = rep(Inf, 16),
+  opts = list(
+    algorithm = "NLOPT_LN_NELDERMEAD",
+    ftol_rel = 1e-10,
+    xtol_rel = 1e-10,
+    maxeval = 200000,
+    print_level = 2
+  ),
+  data = mroz
+)
+
+if (mle_result$status < 0) {
+  warning("Problème de convergence: ", mle_result$message)
+}
+
+
+
+theta_mle <- mle_result$solution
+sigma_hat <- exp(theta_mle[15])
+rho_hat <- tanh(theta_mle[16])
+
+
+
+#SD with the numerical Hessian
+
+cat("Calcul des écarts-types (Hessienne numérique)...\n")
+
+
+hess <- hessian(loglik_total, theta_mle, data = mroz)
+
+
+eigenvalues <- eigen(hess, symmetric = TRUE, only.values = TRUE)$values
+if (any(eigenvalues <= 0)) {
+  warning("La Hessienne n'est pas définie positive!")
+  cat("Valeurs propres:", eigenvalues, "\n")
+}
+
+# Variance Covariance Matrix
+
+var_cov <- solve(hess) / nrow(mroz)
+se_theta <- sqrt(diag(var_cov))
+
+# Delta method for sigma and rho
+se_sigma <- se_theta[15] * sigma_hat
+se_rho <- se_theta[16] * (1 - rho_hat^2) 
+
+
+# Summary Table 
+
+
+cat("\n==== TABLEAU COMPLET DES RÉSULTATS ====\n\n")
+
+# Équation de sélection
+cat("ÉQUATION DE SÉLECTION (Probit):\n")
+gamma_tab <- data.frame(
+  Variable = c("Intercept", "kidsl6", "kids618", "log_hwage", "Unemployment", "fathereduc", "mothereduc"),
+  Coef = c(theta_mle[7], theta_mle[1:6]),
+  SE = c(se_theta[7], se_theta[1:6])
+)
+gamma_tab$z_stat <- gamma_tab$Coef / gamma_tab$SE
+gamma_tab$p_value <- 2 * pnorm(-abs(gamma_tab$z_stat))
+gamma_tab[, 2:5] <- round(gamma_tab[, 2:5], 4)
+print(gamma_tab, row.names = FALSE)
+
+# Équation de salaire
+cat("\nÉQUATION DE SALAIRE:\n")
+beta_tab <- data.frame(
+  Variable = c("Intercept", "exper", "educ", "bigcity", "age", "exper_educ", "bigcity_educ"),
+  Coef = c(theta_mle[14], theta_mle[8:13]),
+  SE = c(se_theta[14], se_theta[8:13])
+)
+beta_tab$z_stat <- beta_tab$Coef / beta_tab$SE
+beta_tab$p_value <- 2 * pnorm(-abs(beta_tab$z_stat))
+beta_tab[, 2:5] <- round(beta_tab[, 2:5], 4)
+print(beta_tab, row.names = FALSE)
+
+# Paramètres de structure
+cat("\nPARAMÈTRES DE STRUCTURE:\n")
+struct_tab <- data.frame(
+  Parameter = c("σ", "ρ"),
+  Estimate = c(sigma_hat, rho_hat),
+  SE = c(se_sigma, se_rho),
+  z_stat = c(sigma_hat/se_sigma, rho_hat/se_rho),
+  p_value = c(2*pnorm(-abs(sigma_hat/se_sigma)), 2*pnorm(-abs(rho_hat/se_rho)))
+)
+struct_tab[, 2:5] <- round(struct_tab[, 2:5], 4)
+print(struct_tab, row.names = FALSE)
+
+
+# Tests for H0: ρ = 0
+
+
+cat("\n\n==== TESTS POUR H0: ρ = 0 ====\n\n")
+
+# Test de Wald
+wald_stat <- (rho_hat / se_rho)^2
+wald_pval <- 1 - pchisq(wald_stat, df = 1)
+
+cat("Test de Wald:\n")
+cat(sprintf("   ρ = %.4f  (SE = %.4f)\n", rho_hat, se_rho))
+cat(sprintf("   Statistique χ² = %.4f\n", wald_stat))
+cat(sprintf("   P-value = %.4f\n", wald_pval))
+cat(sprintf("   Conclusion: %s\n\n", 
+            ifelse(wald_pval < 0.05, 
+                   "Rejet de H0 → biais de sélection significatif",
+                   "Non-rejet de H0 → pas de biais significatif")))
+
+
+cat("Test du rapport de vraisemblance (LR):\n")
+
+theta0_constr <- theta_mle[1:15]
+
+loglik_constr <- function(theta, data) {
+  theta_full <- c(theta, atanh(0))  # Fixer rho = 0
+  loglik_total(theta_full, data)
+}
+
+mle_constr <- nloptr(
+  x0 = theta0_constr,
+  eval_f = loglik_constr,
+  lb = rep(-Inf, 15),
+  ub = rep(Inf, 15),
+  opts = list(
+    algorithm = "NLOPT_LN_NELDERMEAD",
+    ftol_rel = 1e-10,
+    maxeval = 100000,
+    print_level = 0
+  ),
+  data = mroz
+)
+
+ll_unrest <- -mle_result$objective * nrow(mroz)
+ll_rest <- -mle_constr$objective * nrow(mroz)
+lr_stat <- 2 * (ll_unrest - ll_rest)
+lr_pval <- 1 - pchisq(lr_stat, df = 1)
+
+cat(sprintf("   Log-lik non contraint: %.4f\n", ll_unrest))
+cat(sprintf("   Log-lik contraint (ρ=0): %.4f\n", ll_rest))
+cat(sprintf("   Statistique LR χ² = %.4f\n", lr_stat))
+cat(sprintf("   P-value = %.4f\n", lr_pval))
+cat(sprintf("   Conclusion: %s\n\n", 
+            ifelse(lr_pval < 0.05,
+                   "Rejet de H0 → biais de sélection significatif",
+                   "Non-rejet de H0 → pas de biais significatif")))
+
+```
+
+**Model 3 with Ages Controls**
+
+In the following code we will first create the 2 dummies variables for the different ages groups and estimate the model 3
+
+```{r}
+
+
+
+library(nloptr)
+library(numDeriv)
+
+
+
+# Creation of the dummies variables 
+
+mroz$mid_career   <- ifelse(mroz$age >= 40 & mroz$age <= 49, 1, 0)
+mroz$later_career <- ifelse(mroz$age >= 50, 1, 0)
+
+
+
+# Selection equation
+z_vars <- c("kidsl6", "kids618", "log_hwage", "Unemployment", "fathereduc", "mothereduc")
+
+# Outcome equation
+# Référence: 30-39
+x_vars <- c("exper", "educ", "bigcity", "mid_career", "later_career")
+
+cat("Variables du modèle:\n")
+cat("  z (sélection):", paste(z_vars, collapse=", "), "\n")
+cat("  x (salaire):  ", paste(x_vars, collapse=", "), "\n\n")
+
+
+# Log-Likelihood for a single observation
+
+
+loglik_heckman <- function(i, theta, data) {
+
+
+  d_i <- data$lfp[i]
+  z_i <- c(1, as.numeric(data[i, z_vars]))
+
+  gamma <- c(theta[7], theta[1:6])
+  z_gamma <- sum(z_i * gamma)
+
+  if (d_i == 0) {
+    # Non-participation
+    llik <- pnorm(-z_gamma, log.p = TRUE)
+  } else {
+    # Participation
+    x_i <- c(1, as.numeric(data[i, x_vars]))
+    y_i <- data$ln_wage[i]
+
+    beta  <- c(theta[13], theta[8:12])
+    sigma <- exp(theta[14])
+    rho   <- tanh(theta[15])
+
+    x_beta <- sum(x_i * beta)
+    epsilon_std <- (y_i - x_beta) / sigma
+
+    arg_phi <- (z_gamma + rho * epsilon_std) / sqrt(1 - rho^2)
+
+    llik <- dnorm(epsilon_std, log = TRUE) +
+      pnorm(arg_phi, log.p = TRUE) -
+      log(sigma)
+  }
+
+  if (!is.finite(llik)) return(-1e10)
+  llik
+}
+
+
+# Total Log likelihood
+
+
+loglik_total <- function(theta, data) {
+  n <- nrow(data)
+  LL <- sapply(1:n, loglik_heckman, theta = theta, data = data)
+
+  if (any(is.na(LL)) || any(!is.finite(LL))) return(1e10)
+  return(-mean(LL))
+}
+
+
+#Initial Values
+
+
+probit_init <- glm(
+  lfp ~ kidsl6 + kids618 + log_hwage + Unemployment + fathereduc + mothereduc,
+  data = mroz, family = binomial(link = "probit")
+)
+
+ols_init <- lm(
+  ln_wage ~ exper + educ + bigcity + mid_career + later_career,
+  data = mroz[mroz$lfp == 1, ]
+)
+
+theta0 <- c(
+  coef(probit_init)[2:7],   
+  coef(probit_init)[1],         
+  coef(ols_init)[2:6],        
+  coef(ols_init)[1],          
+  log(summary(ols_init)$sigma), 
+  atanh(0.5)                        
+)
+
+cat("Valeurs initiales:\n")
+cat(sprintf("  Nombre de paramètres: %d\n", length(theta0)))
+cat(sprintf("  log(sigma) = %.4f  (sigma = %.4f)\n",
+            theta0[14], exp(theta0[14])))
+cat(sprintf("  atanh(rho) = %.4f  (rho = %.4f)\n",
+            theta0[15], tanh(theta0[15])))
+cat("\nLog-vraisemblance initiale:", -loglik_total(theta0, mroz), "\n\n")
+
+
+#MLE ESTIMATION
+
+cat("Début de l'estimation MLE...\n\n")
+
+mle_result <- nloptr(
+  x0 = theta0,
+  eval_f = loglik_total,
+  lb = rep(-Inf, 15),
+  ub = rep(Inf, 15),
+  opts = list(
+    algorithm = "NLOPT_LN_NELDERMEAD",
+    ftol_rel = 1e-10,
+    xtol_rel = 1e-10,
+    maxeval = 200000,
+    print_level = 2
+  ),
+  data = mroz
+)
+
+if (mle_result$status < 0) {
+  warning("Problème de convergence: ", mle_result$message)
+}
+
+#Results
+
+theta_mle <- mle_result$solution
+sigma_hat <- exp(theta_mle[14])
+rho_hat   <- tanh(theta_mle[15])
+
+cat("\n==== RÉSULTATS MLE ====\n\n")
+cat(sprintf("Log-vraisemblance: %.4f\n\n", -mle_result$objective * nrow(mroz)))
+
+cat("Équation de sélection (γ):\n")
+cat(sprintf("  Intercept    = %8.4f\n", theta_mle[7]))
+for (j in 1:6) cat(sprintf("  %-11s= %8.4f\n", z_vars[j], theta_mle[j]))
+
+cat("\nÉquation de salaire (β):\n")
+cat(sprintf("  Intercept    = %8.4f\n", theta_mle[13]))
+for (j in 1:5) cat(sprintf("  %-11s= %8.4f\n", x_vars[j], theta_mle[7 + j]))
+
+cat("\nParamètres de structure:\n")
+cat(sprintf("  σ            = %8.4f\n", sigma_hat))
+cat(sprintf("  ρ            = %8.4f\n", rho_hat))
+
+
+#SD with the numerical Hessian
+
+cat("Calcul des écarts-types (Hessienne numérique)...\n")
+
+hess <- hessian(loglik_total, theta_mle, data = mroz)
+
+eigenvalues <- eigen(hess, symmetric = TRUE, only.values = TRUE)$values
+if (any(eigenvalues <= 0)) {
+  warning("La Hessienne n'est pas définie positive!")
+  cat("Valeurs propres:", eigenvalues, "\n")
+}
+
+var_cov  <- solve(hess) / nrow(mroz)
+se_theta <- sqrt(diag(var_cov))
+
+# Delta method
+se_sigma <- se_theta[14] * sigma_hat
+se_rho   <- se_theta[15] * (1 - rho_hat^2)
+
+
+
+cat("\n==== TABLEAU COMPLET DES RÉSULTATS ====\n\n")
+
+cat("ÉQUATION DE SÉLECTION (Probit):\n")
+gamma_tab <- data.frame(
+  Variable = c("Intercept", z_vars),
+  Coef     = c(theta_mle[7], theta_mle[1:6]),
+  SE       = c(se_theta[7],  se_theta[1:6])
+)
+gamma_tab$z_stat  <- gamma_tab$Coef / gamma_tab$SE
+gamma_tab$p_value <- 2 * pnorm(-abs(gamma_tab$z_stat))
+gamma_tab[, 2:5]  <- round(gamma_tab[, 2:5], 4)
+print(gamma_tab, row.names = FALSE)
+
+cat("\nÉQUATION DE SALAIRE:\n")
+beta_tab <- data.frame(
+  Variable = c("Intercept", x_vars),
+  Coef     = c(theta_mle[13], theta_mle[8:12]),
+  SE       = c(se_theta[13],  se_theta[8:12])
+)
+beta_tab$z_stat  <- beta_tab$Coef / beta_tab$SE
+beta_tab$p_value <- 2 * pnorm(-abs(beta_tab$z_stat))
+beta_tab[, 2:5]  <- round(beta_tab[, 2:5], 4)
+print(beta_tab, row.names = FALSE)
+
+cat("\nPARAMÈTRES DE STRUCTURE:\n")
+struct_tab <- data.frame(
+  Parameter = c("σ", "ρ"),
+  Estimate  = c(sigma_hat, rho_hat),
+  SE        = c(se_sigma, se_rho),
+  z_stat    = c(sigma_hat / se_sigma, rho_hat / se_rho),
+  p_value   = c(2 * pnorm(-abs(sigma_hat / se_sigma)), 2 * pnorm(-abs(rho_hat / se_rho)))
+)
+struct_tab[, 2:5] <- round(struct_tab[, 2:5], 4)
+print(struct_tab, row.names = FALSE)
+
+
+# Tests H0: rho = 0
+
+
+cat("\n\n==== TESTS POUR H0: ρ = 0 ====\n\n")
+
+# Wald
+wald_stat <- (rho_hat / se_rho)^2
+wald_pval <- 1 - pchisq(wald_stat, df = 1)
+
+cat("1. Test de Wald:\n")
+cat(sprintf("   ρ = %.4f  (SE = %.4f)\n", rho_hat, se_rho))
+cat(sprintf("   Statistique χ² = %.4f\n", wald_stat))
+cat(sprintf("   P-value = %.4f\n", wald_pval))
+cat(sprintf("   Conclusion: %s\n\n",
+            ifelse(wald_pval < 0.05,
+                   "Rejet de H0 → biais de sélection significatif",
+                   "Non-rejet de H0 → pas de biais significatif")))
+
+# LR
+cat("2. Test du rapport de vraisemblance (LR):\n")
+
+theta0_constr <- theta_mle[1:14]  # on enlève atanh(rho)
+
+loglik_constr <- function(theta, data) {
+  theta_full <- c(theta, atanh(0))  # rho = 0
+  loglik_total(theta_full, data)
+}
+
+mle_constr <- nloptr(
+  x0 = theta0_constr,
+  eval_f = loglik_constr,
+  lb = rep(-Inf, 14),
+  ub = rep(Inf, 14),
+  opts = list(
+    algorithm = "NLOPT_LN_NELDERMEAD",
+    ftol_rel = 1e-10,
+    maxeval = 100000,
+    print_level = 0
+  ),
+  data = mroz
+)
+
+ll_unrest <- -mle_result$objective * nrow(mroz)
+ll_rest   <- -mle_constr$objective * nrow(mroz)
+lr_stat   <- 2 * (ll_unrest - ll_rest)
+lr_pval   <- 1 - pchisq(lr_stat, df = 1)
+
+cat(sprintf("   Log-lik non contraint: %.4f\n", ll_unrest))
+cat(sprintf("   Log-lik contraint (ρ=0): %.4f\n", ll_rest))
+cat(sprintf("   Statistique LR χ² = %.4f\n", lr_stat))
+cat(sprintf("   P-value = %.4f\n", lr_pval))
+cat(sprintf("   Conclusion: %s\n\n",
+            ifelse(lr_pval < 0.05,
+                   "Rejet de H0 → biais de sélection significatif",
+                   "Non-rejet de H0 → pas de biais significatif")))
+
+
+```
