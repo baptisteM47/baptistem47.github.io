@@ -7,14 +7,12 @@
     for (const [k, v] of Object.entries(attrs)) {
       if (v == null || v === false) continue;
       if (k === "class") node.className = v;
-      else if (k === "text") node.textContent = v;
       else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
       else node.setAttribute(k, v === true ? "" : v);
     }
     for (const c of children.flat()) if (c != null) node.append(c.nodeType ? c : document.createTextNode(c));
     return node;
   };
-
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -25,24 +23,21 @@
   let lang = params.get("lang") || store.get("bm-lang") ||
     ((navigator.language || "fr").toLowerCase().startsWith("fr") ? "fr" : "en");
   if (!["fr", "en"].includes(lang)) lang = "fr";
-  let theme = null;        // active theme filter id
-  let skill = null;        // active skill filter id
+  let theme = null;
   const openCourses = new Set();
 
   const t = (obj) => (obj && typeof obj === "object" ? (obj[lang] ?? obj.fr) : obj);
   const ui = () => UI[lang];
   const getPath = (o, path) => path.split(".").reduce((a, k) => (a ? a[k] : undefined), o);
-
-  const skillName = (id) => {
-    for (const g of SKILL_GROUPS) for (const s of g.items) if (s.id === id) return s[lang];
-    return id;
-  };
-  const projectCount = (id) => PROJECTS.filter((p) => p.skills.includes(id)).length;
+  const byId = (id) => PROJECTS.find((p) => p.id === id);
   const metricValue = (p) => (lang === "en" && p.metric.valueEn) ? p.metric.valueEn : p.metric.value;
   const fmtMonth = (ym) => {
     const [y, m] = ym.split("-").map(Number);
-    return new Date(y, m - 1, 1).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-GB", { month: "long", year: "numeric" });
+    const s = new Date(y, m - 1, 1).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-GB", { month: "long", year: "numeric" });
+    return s.charAt(0).toUpperCase() + s.slice(1);
   };
+  const TOOL_NAMES = { r: "R", python: "Python", stata: "Stata" };
+  const tools = (p) => p.skills.filter((s) => TOOL_NAMES[s]).map((s) => TOOL_NAMES[s]);
 
   /* ---------- static text ---------- */
   function renderStatic() {
@@ -51,7 +46,9 @@
     document.querySelectorAll("[data-i18n]").forEach((n) => { n.textContent = getPath(ui(), n.dataset.i18n); });
     $("#role").textContent = t(PROFILE.role);
     $("#pitch").textContent = t(PROFILE.pitch);
-    $("#availability").textContent = t(PROFILE.availability);
+    $("#status").textContent = t(PROFILE.status);
+    $("#cta-projects").textContent = ui().ctaProjects;
+    $("#cta-path").textContent = ui().ctaPath;
     $("#print-btn").textContent = ui().print;
     const lt = $("#lang-toggle");
     lt.textContent = ui().langSwitch;
@@ -61,14 +58,22 @@
     $(".skip").textContent = lang === "fr" ? "Aller au contenu" : "Skip to content";
     $("#dlg-close").setAttribute("aria-label", ui().close);
     $("#curve-cap").textContent = ui().curveCaption;
-
     for (const id of ["#profile-links", "#footer-links"]) {
-      const ul = $(id);
-      ul.replaceChildren(...PROFILE.links.map((l) => el("li", {}, el("a", { href: l.url, target: "_blank", rel: "noopener" }, l.label))));
+      $(id).replaceChildren(...PROFILE.links.map((l) =>
+        el("li", {}, el("a", { href: l.url, target: "_blank", rel: "noopener" }, l.label))));
     }
   }
 
   /* ---------- career curve ---------- */
+  function goToStep(id) {
+    const node = document.getElementById(id);
+    if (!node) return;
+    node.scrollIntoView({ block: "center" });
+    node.classList.remove("flash");
+    void node.offsetWidth;
+    node.classList.add("flash");
+  }
+
   function renderCurve() {
     const svg = $("#curve-svg");
     const narrow = svg.parentElement.clientWidth < 520;
@@ -78,8 +83,6 @@
     const x = (v) => padL + ((v - t0) / (t1 - t0)) * (W - padL - padR);
     const y = (v) => H - padB - v * (H - padT - padB);
     const pts = CAREER.map((p) => [x(p.t), y(p.y)]);
-
-    // smooth path (Catmull-Rom to Bézier)
     let d = `M${pts[0][0]},${pts[0][1]}`;
     for (let i = 0; i < pts.length - 1; i++) {
       const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
@@ -98,32 +101,23 @@
     svg.replaceChildren();
     svg.append(s("path", { class: "area", d: `${d} L${pts.at(-1)[0]},${base} L${pts[0][0]},${base} Z` }));
     svg.append(s("line", { class: "axis", x1: padL, x2: W - padR, y1: base, y2: base }));
-    for (let yr = 2021; yr <= 2026; yr++) {
-      svg.append(s("text", { class: "tick", x: x(yr), y: H - 10, "text-anchor": "middle" }, String(yr)));
-    }
+    for (let yr = 2021; yr <= 2026; yr++) svg.append(s("text", { class: "tick", x: x(yr), y: H - 10, "text-anchor": "middle" }, String(yr)));
     svg.append(s("path", { class: "line", d }));
 
     CAREER.forEach((p, i) => {
       const [px, py] = pts[i];
-      const g = s("g", { class: "pt" + (p.open ? " open" : ""), tabindex: "0", role: "link" });
+      const g = s("g", { class: "pt" + (p.current ? " current" : ""), tabindex: "0", role: "link" });
       const label = t(p.label);
       g.setAttribute("aria-label", label);
       const right = px < W * 0.55;
-      const anchor = right ? "start" : "end";
-      const lx = right ? px + 14 : px - 14;
-      const ly = py + 4;
       g.append(s("circle", { class: "hit", cx: px, cy: py, r: 18 }));
       g.append(s("circle", { class: "mark", cx: px, cy: py, r: 6 }));
-      const txt = s("text", { x: lx, y: ly, "text-anchor": anchor }, label);
+      const txt = s("text", { x: right ? px + 14 : px - 14, y: py + 4, "text-anchor": right ? "start" : "end" }, label);
       g.append(txt);
-      const go = () => {
-        const target = document.getElementById(p.target);
-        if (target) target.scrollIntoView({ block: "start" });
-      };
+      const go = () => goToStep(p.target);
       g.addEventListener("click", go);
       g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
       svg.append(g);
-      // label halo for legibility over the curve
       requestAnimationFrame(() => {
         try {
           const bb = txt.getBBox();
@@ -133,29 +127,39 @@
     });
   }
 
-  /* ---------- experience ---------- */
-  function renderExperience() {
-    $("#exp-list").replaceChildren(...EXPERIENCE.map((job) =>
-      el("article", { class: "job" },
-        el("div", { class: "job-period" }, job.period),
-        el("div", {},
-          el("h3", {}, t(job.title)),
-          el("p", { class: "org" }, el("strong", {}, job.company), ", " + t(job.kind)),
-          el("ul", {}, t(job.bullets).map((b) => el("li", {}, b))),
-          el("div", { class: "chips" }, job.skills.map((id) =>
-            el("span", { class: "chip" }, skillName(id))))
-        )
-      )
-    ));
+  /* ---------- timeline ---------- */
+  function renderTimeline() {
+    $("#timeline").replaceChildren(...TIMELINE.map((step) => {
+      const open = openCourses.has(step.id);
+      const listId = "courses-" + step.id;
+      const content = el("div", { class: "tl-body" },
+        step.current ? el("p", { class: "now" }, ui().now) : null,
+        el("h3", {}, t(step.title)),
+        el("p", { class: "org" }, el("strong", {}, step.org), step.kind ? ", " + t(step.kind) : null),
+        step.note ? el("p", { class: "note" }, t(step.note)) : null,
+        step.bullets ? el("ul", { class: "bullets" }, t(step.bullets).map((b) => el("li", {}, b))) : null,
+        step.tags ? el("div", { class: "tags" }, step.tags.map((x) => el("span", { class: "tag" }, x))) : null,
+        step.projects ? el("div", { class: "tl-projects" },
+          el("p", { class: "tl-label" }, ui().projectsDone + " (" + step.projects.length + ")"),
+          el("ul", {}, step.projects.map((pid) => {
+            const p = byId(pid);
+            return el("li", {}, el("button", { class: "proj-link", type: "button", onclick: () => openProject(pid) }, t(p.title)));
+          }))) : null,
+        step.courses ? el("button", {
+          class: "toggle", type: "button", "aria-expanded": String(open), "aria-controls": listId,
+          onclick: () => { open ? openCourses.delete(step.id) : openCourses.add(step.id); renderTimeline(); }
+        }, open ? ui().hideCourses : ui().showCourses) : null,
+        step.courses ? el("ul", { class: "courses", id: listId, hidden: !open }, step.courses.map((c) => el("li", {}, c[lang]))) : null
+      );
+      return el("li", { class: `tl-item ${step.type}${step.current ? " current" : ""}`, id: step.id },
+        el("div", { class: "tl-period" }, t(step.period)),
+        el("div", { class: "tl-rail", "aria-hidden": "true" }, el("span", { class: "mark " + step.type })),
+        content);
+    }));
     $("#summer-list").replaceChildren(...SUMMER_JOBS.map((j) => el("li", {}, el("b", {}, j.year), j[lang])));
   }
 
   /* ---------- projects ---------- */
-  function visibleProjects() {
-    return PROJECTS.filter((p) =>
-      (!theme || p.themes.includes(theme)) && (!skill || p.skills.includes(skill)));
-  }
-
   function renderFilters() {
     const mk = (id, label, n) => el("button", {
       class: "filter", type: "button", "aria-pressed": String(theme === id),
@@ -165,17 +169,6 @@
       mk(null, ui().all, PROJECTS.length),
       ...THEMES.map((th) => mk(th.id, th[lang], PROJECTS.filter((p) => p.themes.includes(th.id)).length))
     );
-    const af = $("#active-filter");
-    if (skill) {
-      af.hidden = false;
-      af.replaceChildren(
-        el("span", {}, ui().filterBy + " : ", el("strong", {}, skillName(skill))),
-        el("button", { type: "button", onclick: () => setSkill(null) }, ui().clearFilter)
-      );
-    } else {
-      af.hidden = true;
-      af.replaceChildren();
-    }
   }
 
   function sparkline() {
@@ -206,31 +199,34 @@
     return el("figure", { class: "spark-fig" }, wrap, el("figcaption", {}, ui().sparkCaption));
   }
 
+  function projectLinks(p, max) {
+    const main = p.links.filter((l) => l.kind !== "data" && l.kind !== "slides").slice(0, max);
+    return main.map((l) => el("a", { class: "link-btn", href: l.href, target: "_blank", rel: "noopener" }, ui().linkKinds[l.kind]));
+  }
+
   function renderProjects() {
-    const list = $("#project-list");
-    const vis = new Set(visibleProjects().map((p) => p.id));
-    const cards = PROJECTS.map((p) => {
-      const card = el("button", {
-        class: "project" + (p.featured ? " featured" : "") + (skill && vis.has(p.id) ? " is-match" : ""),
-        type: "button", "data-id": p.id, hidden: !vis.has(p.id),
-        onclick: () => openProject(p.id)
-      },
-        el("div", { class: "meta" },
-          el("span", {}, t(p.context)),
-          p.featured ? el("span", { class: "badge" }, ui().featured) : el("span", {}, p.date.slice(0, 4))
-        ),
-        el("p", { class: "metric" }, metricValue(p)),
-        el("p", { class: "metric-label" }, t(p.metric.label)),
-        p.featured ? sparkline() : null,
-        p.featured ? el("p", { class: "lede" }, t(p.question)) : null,
-        el("h3", {}, t(p.title)),
-        el("span", { class: "more", "aria-hidden": "true" }, ui().details)
+    const vis = PROJECTS.filter((p) => !theme || p.themes.includes(theme));
+    const cards = vis.map((p) => {
+      const titleId = "pt-" + p.id;
+      const body = el("div", { class: "card-main" },
+        el("p", { class: "meta" },
+          el("span", {}, p.featured ? ui().featured : t(p.context)),
+          el("span", {}, fmtMonth(p.date))),
+        el("h3", { id: titleId },
+          el("button", { class: "card-title", type: "button", onclick: () => openProject(p.id) }, t(p.title))),
+        el("p", { class: "question" }, t(p.question)),
+        el("p", { class: "result" }, el("span", { class: "result-label" }, ui().keyResult), el("b", {}, metricValue(p)), " " + t(p.metric.label)),
+        el("div", { class: "card-foot" },
+          el("div", { class: "actions" },
+            el("button", { class: "link-btn primary", type: "button", onclick: () => openProject(p.id), "aria-describedby": titleId }, ui().details),
+            projectLinks(p, 2)),
+          el("span", { class: "tools" }, tools(p).join(", ")))
       );
-      return card;
+      return el("article", { class: "project" + (p.featured ? " featured" : ""), "data-id": p.id, "aria-labelledby": titleId },
+        body, p.featured ? sparkline() : null);
     });
-    const nodes = [...cards];
-    if (vis.size === 0) nodes.push(el("p", { class: "empty" }, ui().noProjects));
-    list.replaceChildren(...nodes);
+    if (!cards.length) cards.push(el("p", { class: "empty" }, ui().noProjects));
+    $("#project-list").replaceChildren(...cards);
   }
 
   /* ---------- project dialog ---------- */
@@ -238,36 +234,32 @@
   let lastFocus = null;
 
   function openProject(id, push = true) {
-    const p = PROJECTS.find((x) => x.id === id);
+    const p = byId(id);
     if (!p) return;
-    lastFocus = document.activeElement;
+    if (!dlg.open) lastFocus = document.activeElement;
     const L = ui();
-    const body = $("#dlg-body");
-    body.replaceChildren(
-      el("p", { class: "context" }, t(p.context) + ", " + fmtMonth(p.date)),
+    $("#dlg-body").replaceChildren(
+      el("p", { class: "context" }, t(p.context) + ", " + fmtMonth(p.date).toLowerCase()),
       el("h2", { id: "dlg-title" }, t(p.title)),
       el("p", { class: "coauthors" }, L.with + " " + p.coauthors),
+      el("div", { class: "actions top" }, p.links.map((l, i) =>
+        el("a", { class: "link-btn" + (i === 0 ? " primary" : ""), href: l.href, target: "_blank", rel: "noopener" }, L.linkKinds[l.kind]))),
       el("div", { class: "stat" }, el("b", {}, metricValue(p)), el("span", {}, t(p.metric.label))),
       el("h3", {}, L.question), el("p", {}, t(p.question)),
       el("h3", {}, L.method), el("p", {}, t(p.method)),
       el("h3", {}, L.results), el("ul", {}, t(p.results).map((r) => el("li", {}, r))),
       p.figure ? el("figure", {},
         el("img", { src: p.figure.src, alt: t(p.figure.alt), loading: "lazy" }),
-        el("figcaption", {}, t(p.figure.alt))) : null,
-      el("div", { class: "chips" }, p.skills.map((sid) =>
-        el("button", { class: "chip", type: "button", onclick: () => { dlg.close(); setSkill(sid, true); } }, skillName(sid)))),
-      el("div", { class: "actions" }, p.links.map((l) =>
-        el("a", { href: l.href, target: "_blank", rel: "noopener" }, L.linkKinds[l.kind])))
+        el("figcaption", {}, t(p.figure.alt))) : null
     );
     if (!dlg.open) dlg.showModal();
-    $(".sheet-inner").scrollTop = 0;
     dlg.scrollTop = 0;
     if (push && location.hash !== "#p-" + id) history.pushState(null, "", "#p-" + id);
   }
 
   dlg.addEventListener("close", () => {
-    if (location.hash.startsWith("#p-")) history.pushState(null, "", location.pathname + location.search + "#projects");
-    if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+    if (location.hash.startsWith("#p-")) history.pushState(null, "", location.pathname + location.search);
+    if (lastFocus && document.contains(lastFocus)) lastFocus.focus({ preventScroll: true });
   });
   dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
   $("#dlg-close").addEventListener("click", () => dlg.close());
@@ -280,50 +272,11 @@
   window.addEventListener("popstate", syncHash);
 
   /* ---------- skills ---------- */
-  function setSkill(id, scroll) {
-    skill = id;
-    if (id) theme = null;
-    renderFilters();
-    renderProjects();
-    renderSkills();
-    if (scroll || id) $("#projects").scrollIntoView({ block: "start" });
-  }
-
   function renderSkills() {
     $("#skill-groups").replaceChildren(...SKILL_GROUPS.map((g) =>
       el("div", { class: "skill-group" },
         el("h3", {}, g.name[lang]),
-        el("ul", {}, g.items.map((s) => {
-          const n = projectCount(s.id);
-          if (n === 0) return el("li", {}, el("span", { class: "skill" }, s[lang]));
-          return el("li", {}, el("button", {
-            class: "skill", type: "button", "aria-pressed": String(skill === s.id),
-            title: ui().usedIn(n),
-            onclick: () => setSkill(skill === s.id ? null : s.id)
-          }, s[lang], el("span", { class: "n" }, ui().usedIn(n))));
-        }))
-      )
-    ));
-  }
-
-  /* ---------- education ---------- */
-  function renderEducation() {
-    $("#edu-list").replaceChildren(...EDUCATION.map((e, i) => {
-      const open = openCourses.has(i) || e.courses.length === 1;
-      const listId = "courses-" + i;
-      return el("article", { class: "edu" },
-        el("div", { class: "edu-period" }, e.period),
-        el("div", {},
-          el("h3", {}, t(e.degree)),
-          el("p", { class: "school" }, e.school),
-          e.courses.length > 1 ? el("button", {
-            class: "toggle", type: "button", "aria-expanded": String(open), "aria-controls": listId,
-            onclick: () => { open ? openCourses.delete(i) : openCourses.add(i); renderEducation(); }
-          }, open ? ui().hideCourses : ui().showCourses) : null,
-          el("ul", { id: listId, hidden: !open }, e.courses.map((c) => el("li", {}, c[lang])))
-        )
-      );
-    }));
+        el("ul", {}, g.items.map((s) => el("li", {}, s[lang]))))));
   }
 
   /* ---------- nav highlight ---------- */
@@ -332,9 +285,7 @@
     const links = [...document.querySelectorAll(".nav a")];
     const io = new IntersectionObserver((entries) => {
       entries.forEach((en) => {
-        if (en.isIntersecting) {
-          links.forEach((a) => a.classList.toggle("is-current", a.getAttribute("href") === "#" + en.target.id));
-        }
+        if (en.isIntersecting) links.forEach((a) => a.classList.toggle("is-current", a.getAttribute("href") === "#" + en.target.id));
       });
     }, { rootMargin: "-40% 0px -55% 0px" });
     document.querySelectorAll("main section[id]").forEach((s) => io.observe(s));
@@ -344,11 +295,10 @@
   function renderAll() {
     renderStatic();
     renderCurve();
-    renderExperience();
+    renderTimeline();
     renderFilters();
     renderProjects();
     renderSkills();
-    renderEducation();
     if (dlg.open && location.hash.startsWith("#p-")) openProject(location.hash.slice(3), false);
   }
 
@@ -369,12 +319,11 @@
     store.set("bm-theme", next);
   });
 
-  $("#print-btn").addEventListener("click", () => {
-    if (dlg.open) dlg.close();
-    window.print();
+  $("#print-btn").addEventListener("click", () => { if (dlg.open) dlg.close(); window.print(); });
+  window.addEventListener("beforeprint", () => {
+    document.querySelectorAll("details").forEach((d) => { d.open = true; });
+    theme = null; renderFilters(); renderProjects();
   });
-  // Print always shows every project, whatever the active filter
-  window.addEventListener("beforeprint", () => { document.querySelectorAll("details").forEach((d) => { d.open = true; }); theme = null; skill = null; renderFilters(); renderProjects(); renderSkills(); });
 
   renderAll();
   let lastNarrow = $("#curve").clientWidth < 520;

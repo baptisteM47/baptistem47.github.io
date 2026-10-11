@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Baptiste Messant, CV</title>
-  <meta name="description" content="CV interactif de Baptiste Messant, analyste risque de marché. Expériences, projets de recherche avec rapports et code, compétences et formation.">
+  <meta name="description" content="CV interactif de Baptiste Messant, Energy Risk Analyst chez IDEX. Parcours, projets de recherche avec rapports et code, compétences.">
   <meta property="og:title" content="Baptiste Messant, CV">
-  <meta property="og:description" content="Analyste risque de marché, diplômé du Master Economics of Global Risks (TSE).">
+  <meta property="og:description" content="Energy Risk Analyst chez IDEX, diplômé du Master Economics of Global Risks (TSE).">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2317233A'/%3E%3Cpath d='M6 24 C12 22 14 12 26 8' stroke='%235FBFA3' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -28,17 +28,16 @@
     <div class="wrap topbar-inner">
       <a class="brand" href="#top">Baptiste Messant</a>
       <nav class="nav" aria-label="Sections">
-        <a href="#experience" data-i18n="nav.experience">Expérience</a>
+        <a href="#path" data-i18n="nav.path">Parcours</a>
         <a href="#projects" data-i18n="nav.projects">Projets</a>
         <a href="#skills" data-i18n="nav.skills">Compétences</a>
-        <a href="#education" data-i18n="nav.education">Formation</a>
       </nav>
       <div class="tools">
         <button class="btn-ghost" id="lang-toggle" type="button"></button>
         <button class="btn-icon" id="theme-toggle" type="button">
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" fill="currentColor"/></svg>
         </button>
-        <button class="btn-solid" id="print-btn" type="button"></button>
+        <button class="btn-ghost" id="print-btn" type="button"></button>
       </div>
     </div>
   </header>
@@ -46,10 +45,14 @@
   <main id="main">
     <section class="hero wrap" id="top">
       <div class="hero-text">
+        <p class="status"><span class="dot" aria-hidden="true"></span><span id="status"></span></p>
         <h1 class="name">Baptiste Messant</h1>
         <p class="role" id="role"></p>
         <p class="pitch" id="pitch"></p>
-        <p class="availability" id="contact"><span class="dot" aria-hidden="true"></span><span id="availability"></span></p>
+        <div class="cta">
+          <a class="btn-solid btn-lg" href="#projects" id="cta-projects"></a>
+          <a class="btn-ghost btn-lg" href="#path" id="cta-path"></a>
+        </div>
         <ul class="links" id="profile-links"></ul>
       </div>
       <figure class="curve" id="curve">
@@ -58,9 +61,18 @@
       </figure>
     </section>
 
-    <section class="section wrap" id="experience" aria-labelledby="exp-title">
-      <h2 id="exp-title" data-i18n="expTitle">Expérience</h2>
-      <div id="exp-list"></div>
+    <section class="section wrap" id="path" aria-labelledby="path-title">
+      <div class="section-head">
+        <div>
+          <h2 id="path-title" data-i18n="pathTitle">Parcours</h2>
+          <p class="intro" data-i18n="pathIntro"></p>
+        </div>
+        <ul class="legend">
+          <li><span class="mark work" aria-hidden="true"></span><span data-i18n="legendWork"></span></li>
+          <li><span class="mark edu" aria-hidden="true"></span><span data-i18n="legendEdu"></span></li>
+        </ul>
+      </div>
+      <ol class="timeline" id="timeline"></ol>
       <details class="summer">
         <summary data-i18n="summerJobs">Jobs d'été</summary>
         <ul id="summer-list"></ul>
@@ -71,19 +83,12 @@
       <h2 id="proj-title" data-i18n="projectsTitle">Projets</h2>
       <p class="intro" data-i18n="projectsIntro"></p>
       <div class="filters" id="filters" role="toolbar" aria-label="Filtres"></div>
-      <div class="active-filter" id="active-filter" hidden></div>
       <div class="projects" id="project-list"></div>
     </section>
 
     <section class="section wrap" id="skills" aria-labelledby="skills-title">
       <h2 id="skills-title" data-i18n="skillsTitle">Compétences</h2>
-      <p class="intro" data-i18n="skillsHint"></p>
       <div class="skill-groups" id="skill-groups"></div>
-    </section>
-
-    <section class="section wrap" id="education" aria-labelledby="edu-title">
-      <h2 id="edu-title" data-i18n="eduTitle">Formation</h2>
-      <div id="edu-list"></div>
     </section>
   </main>
 

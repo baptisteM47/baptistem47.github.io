@@ -7,8 +7,8 @@ Source of [baptistem47.github.io](https://baptistem47.github.io): a bilingual (F
 | Path | Content |
 |---|---|
 | `index.html` | The single page of the CV |
-| `assets/data.js` | **All the CV content** (profile, experience, projects, skills, education) in French and English. Edit this file to update the site. |
-| `assets/app.js` | Interactions: language switch, project filters, skill filters, project details, light / dark theme |
+| `assets/data.js` | **All the CV content** in French and English: profile, timeline (`TIMELINE`, experience and education), projects, skills. Edit this file to update the site. |
+| `assets/app.js` | Interactions: language switch, career curve, timeline, project filters and details, light / dark theme |
 | `assets/style.css` | Styles, including the print layout used by the "Download as PDF" button |
 | `projects/` | One folder per project, each with its own README, report, code and data |
 | `fr/`, `en/`, `Scoring_project/`, `Python_project/` | Redirects that keep the old links working |
@@ -32,7 +32,7 @@ Two large intermediate datasets of the thesis (`APP_climate.csv`, 51 MB, and `bd
 ## Updating the site
 
 1. Edit the text in `assets/data.js` (each entry has an `fr` and an `en` version).
-2. To add a project, create a folder in `projects/` and add an entry to `PROJECTS` in `assets/data.js`.
+2. To add a project, create a folder in `projects/`, add an entry to `PROJECTS` in `assets/data.js`, and list its id in the matching `TIMELINE` step.
 3. Commit and push: GitHub Pages republishes the site within a minute.
 
 To preview locally: `python3 -m http.server` in this folder, then open http://localhost:8000.

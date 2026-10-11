@@ -5,74 +5,27 @@ const REPO = "https://github.com/baptisteM47/baptistem47.github.io/blob/main/";
 
 const PROFILE = {
   name: "Baptiste Messant",
-  role: { fr: "Analyste risque de marché", en: "Market risk analyst" },
+  role: { fr: "Energy Risk Analyst chez IDEX", en: "Energy Risk Analyst at IDEX" },
   pitch: {
-    fr: "Diplômé du Master Economics of Global Risks de la Toulouse School of Economics. Six mois en risque de marché énergie chez IDEX (gaz, électricité, garanties d'origine) : suivi des positions, risque de contrepartie, reportings Excel / VBA / SQL.",
-    en: "Graduate of the Economics of Global Risks master's at Toulouse School of Economics. Six months in energy market risk at IDEX (gas, power, guarantees of origin): position monitoring, counterparty risk, Excel / VBA / SQL reporting."
+    fr: "Diplômé du Master Economics of Global Risks de la Toulouse School of Economics, je suis Energy Risk Analyst en CDI chez IDEX, où j'ai d'abord effectué mon stage de fin d'études. Je suis les positions et les risques de marché sur le gaz, l'électricité et les garanties d'origine, ainsi que le risque de contrepartie, et je développe les reportings de risque sous Excel, VBA et SQL.",
+    en: "A graduate of the Economics of Global Risks master's at Toulouse School of Economics, I am an Energy Risk Analyst on a permanent contract at IDEX, where I first did my final internship. I monitor market positions and risks on gas, power and guarantees of origin, as well as counterparty risk, and I build risk reports in Excel, VBA and SQL."
   },
-  availability: {
-    fr: "Je cherche un poste en risque de marché à partir d'octobre 2026.",
-    en: "Looking for a market risk role from October 2026."
-  },
+  status: { fr: "En poste : Energy Risk Analyst, CDI", en: "Currently: Energy Risk Analyst, permanent contract" },
   links: [
     { id: "linkedin", label: "LinkedIn", url: "https://www.linkedin.com/in/baptiste-messant/" },
     { id: "github", label: "GitHub", url: "https://github.com/baptisteM47" }
   ]
 };
 
-/* Points de la courbe de parcours (année décimale, hauteur relative 0–1) */
+/* Points de la courbe de parcours (année décimale, hauteur relative 0–1).
+   target = id de l'étape du parcours vers laquelle le point renvoie */
 const CAREER = [
-  { t: 2021.7, y: 0.10, label: { fr: "Licence d'économie, TSE", en: "Economics degree, TSE" }, target: "education" },
-  { t: 2024.7, y: 0.42, label: { fr: "Master 1, TSE", en: "Master 1, TSE" }, target: "education" },
-  { t: 2025.4, y: 0.52, label: { fr: "Stage Midi2i", en: "Midi2i internship" }, target: "experience" },
-  { t: 2025.7, y: 0.68, label: { fr: "Master 2 Global Risks", en: "Master 2 Global Risks" }, target: "education" },
-  { t: 2026.3, y: 0.80, label: { fr: "Stage IDEX, risque énergie", en: "IDEX internship, energy risk" }, target: "experience" },
-  { t: 2026.8, y: 0.90, label: { fr: "Disponible", en: "Available" }, target: "contact", open: true }
-];
-
-const EXPERIENCE = [
-  {
-    period: "2026",
-    company: "IDEX",
-    kind: { fr: "Énergie", en: "Energy" },
-    title: { fr: "Risk manager (stage)", en: "Risk manager (internship)" },
-    bullets: {
-      fr: [
-        "Analyse quotidienne des positions de marché : exposition et volatilité",
-        "Gestion des risques de marché énergie (gaz, électricité, garanties d'origine) et du risque de contrepartie",
-        "Développement de reportings de risque sous Excel, VBA et SQL",
-        "Reportings de risque de marché quotidiens et hebdomadaires",
-        "Contrôle quotidien de l'activité de trading et des opérations de marché"
-      ],
-      en: [
-        "Daily analysis of market positions: exposure and volatility",
-        "Energy market risk (gas, power, guarantees of origin) and counterparty risk management",
-        "Built risk reports in Excel, VBA and SQL",
-        "Daily and weekly market risk reporting",
-        "Daily control of trading activity and market operations"
-      ]
-    },
-    skills: ["excel", "vba", "sql", "market-risk", "counterparty"]
-  },
-  {
-    period: "2025",
-    company: "Midi2i",
-    kind: { fr: "Fonds d'investissement", en: "Investment fund" },
-    title: { fr: "Analyste en gestion des risques (stage)", en: "Risk management analyst (internship)" },
-    bullets: {
-      fr: [
-        "Découverte de l'ensemble du département financier : gestion de fonds et d'actifs, méthodes de calcul des portefeuilles clients",
-        "Contrôles qualité des données réglementaires AMF et maîtrise des risques de diffusion des données",
-        "Analyse de données pour fiabiliser la gestion des données et automatiser des tâches financières"
-      ],
-      en: [
-        "Rotation across the finance department: fund and asset management, client portfolio calculation methods",
-        "AMF regulatory data quality checks and control of data dissemination risk",
-        "Data analysis to make data management more reliable and automate finance tasks"
-      ]
-    },
-    skills: ["excel", "regulation"]
-  }
+  { t: 2021.7, y: 0.10, label: { fr: "Licence d'économie, TSE", en: "Economics degree, TSE" }, target: "tl-licence" },
+  { t: 2024.7, y: 0.42, label: { fr: "Master 1, TSE", en: "Master 1, TSE" }, target: "tl-m1" },
+  { t: 2025.4, y: 0.52, label: { fr: "Stage Midi2i", en: "Midi2i internship" }, target: "tl-midi2i" },
+  { t: 2025.7, y: 0.68, label: { fr: "Master 2 Global Risks", en: "Master 2 Global Risks" }, target: "tl-m2" },
+  { t: 2026.3, y: 0.80, label: { fr: "Stage IDEX", en: "IDEX internship" }, target: "tl-idex-stage" },
+  { t: 2026.8, y: 0.92, label: { fr: "CDI IDEX, Energy Risk Analyst", en: "IDEX, Energy Risk Analyst" }, target: "tl-idex", current: true }
 ];
 
 const SUMMER_JOBS = [
@@ -83,7 +36,7 @@ const SUMMER_JOBS = [
   { year: "2020", fr: "Agent d'entrepôt, Logipharma", en: "Warehouse worker, Logipharma" }
 ];
 
-/* Compétences : chaque id est relié aux projets qui l'utilisent */
+/* Compétences (liste simple) */
 const SKILL_GROUPS = [
   {
     name: { fr: "Risque et finance", en: "Risk and finance" },
@@ -530,69 +483,159 @@ const EDUCATION = [
   }
 ];
 
+
+/* Parcours chronologique, du plus récent au plus ancien.
+   type : "work" (expérience) ou "edu" (formation).
+   projects : projets réalisés pendant l'étape (ids de PROJECTS). */
+const TIMELINE = [
+  {
+    id: "tl-idex", type: "work", current: true,
+    period: { fr: "2026 – aujourd'hui", en: "2026 – present" },
+    title: { fr: "Energy Risk Analyst", en: "Energy Risk Analyst" },
+    org: "IDEX",
+    kind: { fr: "Énergie, CDI", en: "Energy, permanent contract" },
+    bullets: {
+      fr: [
+        "Analyse quotidienne des positions de marché : exposition et volatilité",
+        "Gestion des risques de marché énergie (gaz, électricité, garanties d'origine) et du risque de contrepartie",
+        "Reportings de risque de marché quotidiens et hebdomadaires",
+        "Développement et automatisation des reportings de risque sous Excel, VBA et SQL",
+        "Contrôle quotidien de l'activité de trading et des opérations de marché"
+      ],
+      en: [
+        "Daily analysis of market positions: exposure and volatility",
+        "Energy market risk (gas, power, guarantees of origin) and counterparty risk management",
+        "Daily and weekly market risk reporting",
+        "Building and automating risk reports in Excel, VBA and SQL",
+        "Daily control of trading activity and market operations"
+      ]
+    },
+    tags: ["Excel", "VBA", "SQL"]
+  },
+  {
+    id: "tl-idex-stage", type: "work",
+    period: { fr: "2026", en: "2026" },
+    title: { fr: "Energy Risk Analyst, stage de fin d'études", en: "Energy Risk Analyst, final internship" },
+    org: "IDEX",
+    kind: { fr: "Énergie", en: "Energy" },
+    note: {
+      fr: "Stage au sein de l'équipe risques de marché, suivi d'une embauche en CDI sur le même poste.",
+      en: "Internship in the market risk team, followed by a permanent hire in the same role."
+    }
+  },
+  {
+    id: "tl-m2", type: "edu",
+    period: { fr: "2025 – 2026", en: "2025 – 2026" },
+    title: { fr: "Master 2 Economics of Global Risks", en: "Master 2 Economics of Global Risks" },
+    org: "Toulouse School of Economics",
+    projects: ["climate-policy-uncertainty", "hf-volatility", "credit-scoring", "extreme-value-census", "econometrics-methods", "euro-yield-curve", "government-spending-svar", "nh1-cost-benefit"],
+    courses: EDUCATION[0].courses
+  },
+  {
+    id: "tl-midi2i", type: "work",
+    period: { fr: "2025", en: "2025" },
+    title: { fr: "Analyste en gestion des risques, stage", en: "Risk management analyst, internship" },
+    org: "Midi2i",
+    kind: { fr: "Fonds d'investissement", en: "Investment fund" },
+    bullets: {
+      fr: [
+        "Découverte de l'ensemble du département financier : gestion de fonds et d'actifs, méthodes de calcul des portefeuilles clients",
+        "Contrôles qualité des données réglementaires AMF et maîtrise des risques de diffusion des données",
+        "Analyse de données pour fiabiliser la gestion des données et automatiser des tâches financières"
+      ],
+      en: [
+        "Rotation across the finance department: fund and asset management, client portfolio calculation methods",
+        "AMF regulatory data quality checks and control of data dissemination risk",
+        "Data analysis to make data management more reliable and automate finance tasks"
+      ]
+    }
+  },
+  {
+    id: "tl-m1", type: "edu",
+    period: { fr: "2024 – 2025", en: "2024 – 2025" },
+    title: { fr: "Master 1 International Economics", en: "Master 1 International Economics" },
+    org: "Toulouse School of Economics",
+    projects: ["mental-health-us"],
+    courses: EDUCATION[1].courses
+  },
+  {
+    id: "tl-licence", type: "edu",
+    period: { fr: "2021 – 2024", en: "2021 – 2024" },
+    title: { fr: "Licence d'économie", en: "Bachelor's in Economics" },
+    org: "Toulouse School of Economics",
+    note: EDUCATION[2].courses[0]
+  }
+];
+
 const UI = {
   fr: {
-    nav: { experience: "Expérience", projects: "Projets", skills: "Compétences", education: "Formation" },
-    print: "Télécharger en PDF",
+    nav: { path: "Parcours", projects: "Projets", skills: "Compétences" },
+    print: "CV en PDF",
     langSwitch: "English",
     langSwitchLabel: "Switch to English",
     themeLabel: "Changer de thème",
-    curveCaption: "Parcours, de la licence au premier poste",
-    expTitle: "Expérience",
-    summerJobs: "Jobs d'été",
+    ctaProjects: "Voir mes 9 projets",
+    ctaPath: "Mon parcours",
+    curveCaption: "Cliquez sur une étape pour l'ouvrir dans le parcours.",
+    pathTitle: "Parcours",
+    pathIntro: "Expériences et formation dans l'ordre chronologique, avec les projets réalisés à chaque étape.",
+    legendWork: "Expérience",
+    legendEdu: "Formation",
+    now: "Poste actuel",
+    projectsDone: "Projets réalisés",
+    summerJobs: "Jobs d'été (2020 à 2024)",
     projectsTitle: "Projets",
-    projectsIntro: "Neuf études réalisées à la TSE, avec rapports, code et données. Filtrez par thème ou cliquez sur une compétence plus bas pour voir les projets qui la mobilisent.",
+    projectsIntro: "Neuf études menées à la Toulouse School of Economics. Chaque fiche donne accès au rapport complet et au code.",
     all: "Tous",
-    featured: "Mémoire",
-    sparkCaption: "Indice d'incertitude construit dans le mémoire, 2016 à 2025. Les points marquent les pics étudiés.",
-    details: "Voir le détail",
+    featured: "Mémoire de fin d'études",
+    keyResult: "Résultat clé",
+    details: "Détails",
     question: "Question",
     method: "Méthode",
     results: "Résultats",
     with: "Avec",
     close: "Fermer",
-    linkKinds: { report: "Rapport (PDF)", slides: "Présentation (PDF)", code: "Code", data: "Données", html: "Rapport interactif" },
+    linkKinds: { report: "Rapport", slides: "Présentation", code: "Code", data: "Données", html: "Rapport" },
     skillsTitle: "Compétences",
-    skillsHint: "Cliquez sur une compétence pour filtrer les projets.",
-    usedIn: (n) => n === 0 ? "" : (n === 1 ? "1 projet" : n + " projets"),
-    filterBy: "Filtre",
-    clearFilter: "Retirer le filtre",
-    eduTitle: "Formation",
     showCourses: "Voir les cours",
     hideCourses: "Masquer les cours",
+    sparkCaption: "Indice d'incertitude construit dans le mémoire, 2016 à 2025. Les points marquent les pics étudiés.",
     footer: "Site mis à jour en octobre 2026.",
-    noProjects: "Aucun projet ne correspond. Retirez le filtre pour tout afficher."
+    noProjects: "Aucun projet ne correspond. Choisissez « Tous » pour tout afficher."
   },
   en: {
-    nav: { experience: "Experience", projects: "Projects", skills: "Skills", education: "Education" },
-    print: "Download as PDF",
+    nav: { path: "Background", projects: "Projects", skills: "Skills" },
+    print: "PDF résumé",
     langSwitch: "Français",
     langSwitchLabel: "Passer en français",
     themeLabel: "Toggle theme",
-    curveCaption: "Path from degree to first role",
-    expTitle: "Experience",
-    summerJobs: "Summer jobs",
+    ctaProjects: "See my 9 projects",
+    ctaPath: "My background",
+    curveCaption: "Click a step to open it in the timeline.",
+    pathTitle: "Background",
+    pathIntro: "Experience and education in chronological order, with the projects completed at each step.",
+    legendWork: "Experience",
+    legendEdu: "Education",
+    now: "Current role",
+    projectsDone: "Projects completed",
+    summerJobs: "Summer jobs (2020 to 2024)",
     projectsTitle: "Projects",
-    projectsIntro: "Nine studies carried out at TSE, with reports, code and data. Filter by theme, or click a skill further down to see the projects that use it.",
+    projectsIntro: "Nine studies carried out at Toulouse School of Economics. Each card links to the full report and the code.",
     all: "All",
-    featured: "Thesis",
-    sparkCaption: "Uncertainty index built in the thesis, 2016 to 2025. Dots mark the spikes studied.",
-    details: "See details",
+    featured: "Master's thesis",
+    keyResult: "Key result",
+    details: "Details",
     question: "Question",
     method: "Method",
     results: "Results",
     with: "With",
     close: "Close",
-    linkKinds: { report: "Report (PDF)", slides: "Slides (PDF)", code: "Code", data: "Data", html: "Interactive report" },
+    linkKinds: { report: "Report", slides: "Slides", code: "Code", data: "Data", html: "Report" },
     skillsTitle: "Skills",
-    skillsHint: "Click a skill to filter the projects.",
-    usedIn: (n) => n === 0 ? "" : (n === 1 ? "1 project" : n + " projects"),
-    filterBy: "Filter",
-    clearFilter: "Clear filter",
-    eduTitle: "Education",
     showCourses: "Show courses",
     hideCourses: "Hide courses",
+    sparkCaption: "Uncertainty index built in the thesis, 2016 to 2025. Dots mark the spikes studied.",
     footer: "Site updated October 2026.",
-    noProjects: "No project matches. Clear the filter to see them all."
+    noProjects: "No project matches. Choose “All” to see every project."
   }
 };
