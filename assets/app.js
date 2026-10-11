@@ -30,14 +30,11 @@
   const ui = () => UI[lang];
   const getPath = (o, path) => path.split(".").reduce((a, k) => (a ? a[k] : undefined), o);
   const byId = (id) => PROJECTS.find((p) => p.id === id);
-  const metricValue = (p) => (lang === "en" && p.metric.valueEn) ? p.metric.valueEn : p.metric.value;
   const fmtMonth = (ym) => {
     const [y, m] = ym.split("-").map(Number);
     const s = new Date(y, m - 1, 1).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-GB", { month: "long", year: "numeric" });
     return s.charAt(0).toUpperCase() + s.slice(1);
   };
-  const TOOL_NAMES = { r: "R", python: "Python", stata: "Stata" };
-  const tools = (p) => p.skills.filter((s) => TOOL_NAMES[s]).map((s) => TOOL_NAMES[s]);
 
   /* ---------- static text ---------- */
   function renderStatic() {
@@ -56,7 +53,6 @@
     lt.setAttribute("lang", lang === "fr" ? "en" : "fr");
     $("#theme-toggle").setAttribute("aria-label", ui().themeLabel);
     $(".skip").textContent = lang === "fr" ? "Aller au contenu" : "Skip to content";
-    $("#dlg-close").setAttribute("aria-label", ui().close);
     $("#curve-cap").textContent = ui().curveCaption;
     for (const id of ["#profile-links", "#footer-links"]) {
       $(id).replaceChildren(...PROFILE.links.map((l) =>
@@ -69,6 +65,7 @@
     const node = document.getElementById(id);
     if (!node) return;
     node.scrollIntoView({ block: "center" });
+    if (node.matches(".project")) { const b = node.querySelector("a"); if (b) b.focus({ preventScroll: true }); }
     node.classList.remove("flash");
     void node.offsetWidth;
     node.classList.add("flash");
@@ -143,7 +140,7 @@
           el("p", { class: "tl-label" }, ui().projectsDone + " (" + step.projects.length + ")"),
           el("ul", {}, step.projects.map((pid) => {
             const p = byId(pid);
-            return el("li", {}, el("button", { class: "proj-link", type: "button", onclick: () => openProject(pid) }, t(p.title)));
+            return el("li", {}, el("button", { class: "proj-link", type: "button", onclick: () => showProject(pid) }, t(p.title)));
           }))) : null,
         step.courses ? el("button", {
           class: "toggle", type: "button", "aria-expanded": String(open), "aria-controls": listId,
@@ -199,11 +196,6 @@
     return el("figure", { class: "spark-fig" }, wrap, el("figcaption", {}, ui().sparkCaption));
   }
 
-  function projectLinks(p, max) {
-    const main = p.links.filter((l) => l.kind !== "data" && l.kind !== "slides").slice(0, max);
-    return main.map((l) => el("a", { class: "link-btn", href: l.href, target: "_blank", rel: "noopener" }, ui().linkKinds[l.kind]));
-  }
-
   function renderProjects() {
     const vis = PROJECTS.filter((p) => !theme || p.themes.includes(theme));
     const cards = vis.map((p) => {
@@ -212,64 +204,28 @@
         el("p", { class: "meta" },
           el("span", {}, p.featured ? ui().featured : t(p.context)),
           el("span", {}, fmtMonth(p.date))),
-        el("h3", { id: titleId },
-          el("button", { class: "card-title", type: "button", onclick: () => openProject(p.id) }, t(p.title))),
-        el("p", { class: "question" }, t(p.question)),
-        el("p", { class: "result" }, el("span", { class: "result-label" }, ui().keyResult), el("b", {}, metricValue(p)), " " + t(p.metric.label)),
+        el("h3", { id: titleId }, t(p.title)),
+        el("p", { class: "overview" }, t(p.overview)),
         el("div", { class: "card-foot" },
-          el("div", { class: "actions" },
-            el("button", { class: "link-btn primary", type: "button", onclick: () => openProject(p.id), "aria-describedby": titleId }, ui().details),
-            projectLinks(p, 2)),
-          el("span", { class: "tools" }, tools(p).join(", ")))
+          el("div", { class: "actions" }, p.links.map((l, i) =>
+            el("a", { class: "link-btn" + (i === 0 ? " primary" : ""), href: l.href, target: "_blank", rel: "noopener", "aria-describedby": titleId }, ui().linkKinds[l.kind]))),
+          el("span", { class: "tools" }, p.tools.join(", ")))
       );
-      return el("article", { class: "project" + (p.featured ? " featured" : ""), "data-id": p.id, "aria-labelledby": titleId },
+      return el("article", { class: "project" + (p.featured ? " featured" : ""), id: "p-" + p.id, "aria-labelledby": titleId },
         body, p.featured ? sparkline() : null);
     });
     if (!cards.length) cards.push(el("p", { class: "empty" }, ui().noProjects));
     $("#project-list").replaceChildren(...cards);
   }
 
-  /* ---------- project dialog ---------- */
-  const dlg = $("#project-dialog");
-  let lastFocus = null;
-
-  function openProject(id, push = true) {
-    const p = byId(id);
+  /* Show a project card (from the timeline or a #p-… link) */
+  function showProject(id) {
+    const p = PROJECTS.find((x) => x.id === id);
     if (!p) return;
-    if (!dlg.open) lastFocus = document.activeElement;
-    const L = ui();
-    $("#dlg-body").replaceChildren(
-      el("p", { class: "context" }, t(p.context) + ", " + fmtMonth(p.date).toLowerCase()),
-      el("h2", { id: "dlg-title" }, t(p.title)),
-      el("p", { class: "coauthors" }, L.with + " " + p.coauthors),
-      el("div", { class: "actions top" }, p.links.map((l, i) =>
-        el("a", { class: "link-btn" + (i === 0 ? " primary" : ""), href: l.href, target: "_blank", rel: "noopener" }, L.linkKinds[l.kind]))),
-      el("div", { class: "stat" }, el("b", {}, metricValue(p)), el("span", {}, t(p.metric.label))),
-      el("h3", {}, L.question), el("p", {}, t(p.question)),
-      el("h3", {}, L.method), el("p", {}, t(p.method)),
-      el("h3", {}, L.results), el("ul", {}, t(p.results).map((r) => el("li", {}, r))),
-      p.figure ? el("figure", {},
-        el("img", { src: p.figure.src, alt: t(p.figure.alt), loading: "lazy" }),
-        el("figcaption", {}, t(p.figure.alt))) : null
-    );
-    if (!dlg.open) dlg.showModal();
-    dlg.scrollTop = 0;
-    if (push && location.hash !== "#p-" + id) history.pushState(null, "", "#p-" + id);
+    if (theme && !p.themes.includes(theme)) { theme = null; renderFilters(); renderProjects(); }
+    goToStep("p-" + id);
+    if (location.hash !== "#p-" + id) history.replaceState(null, "", "#p-" + id);
   }
-
-  dlg.addEventListener("close", () => {
-    if (location.hash.startsWith("#p-")) history.pushState(null, "", location.pathname + location.search);
-    if (lastFocus && document.contains(lastFocus)) lastFocus.focus({ preventScroll: true });
-  });
-  dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
-  $("#dlg-close").addEventListener("click", () => dlg.close());
-
-  function syncHash() {
-    const h = location.hash;
-    if (h.startsWith("#p-")) openProject(h.slice(3), false);
-    else if (dlg.open) dlg.close();
-  }
-  window.addEventListener("popstate", syncHash);
 
   /* ---------- skills ---------- */
   function renderSkills() {
@@ -299,7 +255,6 @@
     renderFilters();
     renderProjects();
     renderSkills();
-    if (dlg.open && location.hash.startsWith("#p-")) openProject(location.hash.slice(3), false);
   }
 
   $("#lang-toggle").addEventListener("click", () => {
@@ -319,7 +274,7 @@
     store.set("bm-theme", next);
   });
 
-  $("#print-btn").addEventListener("click", () => { if (dlg.open) dlg.close(); window.print(); });
+  $("#print-btn").addEventListener("click", () => window.print());
   window.addEventListener("beforeprint", () => {
     document.querySelectorAll("details").forEach((d) => { d.open = true; });
     theme = null; renderFilters(); renderProjects();
@@ -332,5 +287,5 @@
     if (n !== lastNarrow) { lastNarrow = n; renderCurve(); }
   });
   watchSections();
-  syncHash();
+  if (location.hash.startsWith("#p-")) requestAnimationFrame(() => showProject(location.hash.slice(3)));
 })();
